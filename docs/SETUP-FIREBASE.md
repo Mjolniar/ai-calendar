@@ -146,9 +146,8 @@ powershell -File tools/mcp-call.ps1 list_series
 
 ## Canvas (optional)
 
-Set the two `CANVAS_*` secrets and redeploy. `canvasSync` reads `/api/v1/planner/items` and the
-courses list with your token every 30 minutes. Course codes and colors come from Canvas; the
-School tab filters by class. The phone and the PC can also trigger a sync (Sync Canvas).
+See [SETUP-CANVAS.md](SETUP-CANVAS.md): the access token, the two `CANVAS_*` secrets, and what
+the 30-minute sync imports.
 
 ## Costs and limits
 

@@ -50,8 +50,9 @@ for the optional mail tools, a Microsoft Entra app registration.
 
 1. [docs/SETUP-FIREBASE.md](docs/SETUP-FIREBASE.md): project, Firestore, Functions, secrets, the
    Android app registration, deploy.
-2. [docs/SETUP-AZURE.md](docs/SETUP-AZURE.md): the Microsoft app for Outlook.com mail (optional).
-3. Build and install the phone and Windows apps, pair them, and connect an AI client:
+2. [docs/SETUP-CANVAS.md](docs/SETUP-CANVAS.md): link Canvas LMS for the School feed (optional).
+3. [docs/SETUP-AZURE.md](docs/SETUP-AZURE.md): the Microsoft app for Outlook.com mail (optional).
+4. Build and install the phone and Windows apps, pair them, and connect an AI client:
    [docs/SETUP-FIREBASE.md#connect-the-apps-and-an-ai-client](docs/SETUP-FIREBASE.md#connect-the-apps-and-an-ai-client).
 
 Handing the work to a coding agent (Claude Code, Codex and others)? Point it at

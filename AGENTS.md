@@ -18,13 +18,15 @@ their secrets.
    plan and runs `firebase login`. You can then select the project, deploy rules, create secrets
    from files the human prepared (never echo their values), write `bridge/.env.<project-id>` from
    the Android app registration values, and deploy.
-3. **Microsoft (optional):** follow `docs/SETUP-AZURE.md`. The human registers the app and creates
+3. **Canvas (optional):** follow `docs/SETUP-CANVAS.md`. The human creates the Canvas access
+   token; you store it and the Canvas address as secrets from files and redeploy both functions.
+4. **Microsoft (optional):** follow `docs/SETUP-AZURE.md`. The human registers the app and creates
    the client secret in the Entra admin center; you store the values as secrets and redeploy.
-4. **Verify:** `GET <base>/health`, then `tools/mcp-call.ps1 list_series` with the API token.
-5. **Apps:** change `applicationId` and `namespace` in `app/build.gradle.kts` if the human wants
+5. **Verify:** `GET <base>/health`, then `tools/mcp-call.ps1 list_series` with the API token.
+6. **Apps:** change `applicationId` and `namespace` in `app/build.gradle.kts` if the human wants
    their own package (the Firebase Android registration must match), build and install the phone
    app, install the Windows app, and let the human pair both with the pairing code.
-6. **AI client:** the human adds `<base>/mcp` as a custom MCP connector and enters the pairing
+7. **AI client:** the human adds `<base>/mcp` as a custom MCP connector and enters the pairing
    code on the consent page.
 
 ## Commands
