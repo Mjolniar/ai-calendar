@@ -9,8 +9,10 @@ pairs.
 
 1. Create a Firebase project in the [Firebase console](https://console.firebase.google.com). Note
    the **project id** (`<project-id>` below).
-2. Upgrade it to the **Blaze** plan. Cloud Functions, Secret Manager and Cloud Scheduler need it.
-   A personal calendar stays far inside the free usage.
+2. Upgrade it to the **Blaze** (pay as you go) plan. Cloud Functions, Secret Manager and Cloud
+   Scheduler need it, and it needs a payment card. Most of the use stays inside the free
+   quotas; see [Running costs](#running-costs) for what it costs and how to cap it. Set a budget
+   alert when you add the card (step 7 there).
 3. **Firestore:** create a database in Native mode. Region: any; `us-central1`/`nam5` sits next
    to the functions.
 4. Install the CLI (it is also a dev dependency of `bridge/`) and select the project:
@@ -149,7 +151,74 @@ powershell -File tools/mcp-call.ps1 list_series
 See [SETUP-CANVAS.md](SETUP-CANVAS.md): the access token, the two `CANVAS_*` secrets, and what
 the 30-minute sync imports.
 
-## Costs and limits
+## Running costs
 
-Functions run with `minInstances: 0`; idle cost is near zero. Each sync reads the reminders
-collection in full, which is fine for hundreds or a few thousand reminders, not for millions.
+The Blaze plan needs a card, but you pay only for use beyond the free quotas, and a personal
+calendar is small. **Expect $0 to about $1 a month with the phone alone, and a few dollars a
+month if the Windows app stays open most of the day.** The numbers below let you check that for
+your own calendar. Prices are Google's list prices in October 2026, US regions; check the
+linked pricing pages before relying on them.
+
+### Free quotas that apply
+
+| Service | What this project uses | Free each month | Beyond it |
+|---|---|---|---|
+| [Cloud Firestore](https://cloud.google.com/firestore/pricing) | Reminders, devices, sign-in tokens, series | 50,000 reads, 20,000 writes and 20,000 deletes **per day**, 1 GiB stored. Only the `(default)` database gets this | Reads about $0.03 to $0.06 per 100,000, depending on location |
+| [Cloud Run functions](https://cloud.google.com/run/pricing) (2nd gen) | `api` and `canvasSync` | 2 million requests, 180,000 vCPU-seconds, 360,000 GiB-seconds, 1 GiB internet egress (North America) | Requests $0.40 per million; egress about $0.12 per GB |
+| [Cloud Scheduler](https://cloud.google.com/scheduler/pricing) | 1 job (`canvasSync`) | 3 jobs per billing account | $0.10 per job per month |
+| [Secret Manager](https://cloud.google.com/secret-manager/pricing) | 6 secrets | 6 active secret versions, 10,000 accesses per billing account | $0.06 per extra active version per month |
+| [Artifact Registry](https://cloud.google.com/artifact-registry/pricing) | Container images of the functions | 0.5 GB | $0.10 per GB per month |
+| Cloud Build, Cloud Storage | Building and uploading on deploy | 2,500 build-minutes; 5 GB in US regions | Not reached by occasional deploys |
+| Firebase Cloud Messaging | Sync signals to the phone | Free | Free |
+
+### Where the usage comes from
+
+Every sync reads the whole `events` collection: one document read per reminder, including done
+ones and the tombstones of deleted task items. With **N** reminders stored:
+
+| Source | Firestore reads | Data sent out |
+|---|---|---|
+| Scheduled run, every 30 minutes (Canvas import and series top-up) | About 4 x N, plus one per Canvas item. 48 runs a day | None |
+| Phone sync (on each change signal, every 6 hours, and when opened) | N per sync; a few dozen syncs a day | About 1.6 KB per reminder per sync |
+| Windows app, while it is running | N per minute (it polls every 60 seconds) | About 1.6 KB per reminder per minute |
+| AI client calls | N per `list_reminders`; a few per write | Small |
+
+Example: **N = 360 reminders, with Canvas linked.**
+
+| Scenario | Reads a day | Egress a month | Estimated cost a month |
+|---|---|---|---|
+| Phone only | About 85,000 (35,000 over the free 50,000) | Under 1 GB | **About $0.30 to $0.60** |
+| Phone, and the Windows app open 8 hours a day | About 260,000 | About 8.5 GB | **About $2.80 to $4.70** |
+| Phone, and the Windows app open around the clock | About 600,000 | About 25 GB | **About $8 to $13** |
+| No Canvas, under 150 reminders, Windows app open only now and then | Under 50,000 | Under 1 GB | **$0** |
+
+Everything else (function CPU and requests, Scheduler, Secret Manager, FCM) stays inside its free
+quota at this size. If your bill shows $0 while the table says otherwise, check for Google Cloud
+free trial credits on the billing account; they hide charges until they run out.
+
+### Keeping it at or near $0
+
+1. **Close the Windows app when you are not using it,** or turn off Tools > Options > keep running
+   in the notification area. It is the largest cost by far.
+2. **Keep the reminder count down.** Done reminders and tombstones are read on every sync.
+   Deleting old archived reminders lowers every number above.
+3. **Canvas** accounts for about three of the four full reads in each scheduled run. Without it
+   (placeholder secrets), the Canvas step fails, the scheduler retries the run up to twice, and
+   each attempt still tops up repeating reminders: about N to 3 x N reads per run instead of
+   4 x N.
+4. **Secret versions:** every `functions:secrets:set` adds a version, and old versions stay
+   active (and billable past six). Remove unused ones with `npx firebase functions:secrets:prune`.
+5. **Container images:** when the Firebase CLI asks on deploy how long to keep container images,
+   pick a short period (a day or so), or set a cleanup policy on the `gcf-artifacts` repository in
+   Artifact Registry. Otherwise old images pile up past the free 0.5 GB.
+6. **Function limits:** `api` scales to zero (`minInstances: 0`) and is capped at 10 instances;
+   `canvasSync` runs one at a time. An idle project costs nothing.
+7. **Budget alert:** Google Cloud console > Billing > Budgets & alerts > Create budget, for
+   example $5 a month with alerts at 50%, 90% and 100%. An alert does not stop charges, but it
+   tells you early.
+
+### Limits
+
+The design suits hundreds to a few thousand reminders. Because syncs read the whole collection,
+costs grow with the reminder count times the sync count; a much larger calendar would want an
+incremental sync (only what changed since the device's last revision).
