@@ -1,5 +1,12 @@
 # AI Calendar
 
+> [!WARNING]
+> **This project is fully AI-coded.** Every line of code, every test and every document here was
+> written by AI coding agents. No human wrote the code or reviewed it line by line. It runs one
+> person's real calendar, and its tests pass, but it has had no independent security review or
+> audit. Read the code before you trust it with your data, your mailbox or a payment card, and use
+> it at your own risk.
+
 A personal reminder system that AI assistants can write to. An Android app and a Windows app
 share one cloud calendar; a Firebase backend stores it and exposes it to AI clients (Claude, or
 any MCP client) through a remote MCP server secured with OAuth 2.1. Every screen is styled like
