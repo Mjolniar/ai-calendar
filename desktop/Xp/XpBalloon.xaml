@@ -1,0 +1,43 @@
+<!--
+  Balloon tip above the notification area: icon, bold heading, text, optional links, and the tail
+  that points at the tray. It never takes the keyboard focus.
+-->
+<Window x:Class="AICalendar.Desktop.Xp.XpBalloon"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI Calendar" Width="356" SizeToContent="Height" WindowStartupLocation="Manual"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        ShowInTaskbar="False" ShowActivated="False" Topmost="True" Focusable="False" Opacity="0"
+        FontFamily="{StaticResource Xp.Font}" FontSize="13" Foreground="{DynamicResource Xp.TooltipText}"
+        UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
+    <!-- The margin leaves room for the shadow. -->
+    <Grid x:Name="Shape" Margin="8,6,10,3">
+        <Grid.Effect>
+            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Direction="270" Opacity="0.4" />
+        </Grid.Effect>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Border Grid.Row="0" CornerRadius="7" Background="{DynamicResource Xp.Tooltip}"
+                BorderBrush="{DynamicResource Xp.TooltipBorder}" BorderThickness="1" Padding="10,8,5,9"
+                MouseLeftButtonUp="Body_MouseLeftButtonUp">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Xp.DismissButton}" ToolTip="Close"
+                            Margin="4,-4,0,0" VerticalAlignment="Top" Click="Close_Click" />
+                    <Image x:Name="Picture" DockPanel.Dock="Left" Width="16" Height="16" Margin="0,1,7,0" VerticalAlignment="Top" />
+                    <TextBlock x:Name="Heading" FontWeight="Bold" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+                <StackPanel x:Name="Links" DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="22,6,0,0" Visibility="Collapsed" />
+                <TextBlock x:Name="Message" Margin="23,3,8,0" TextWrapping="Wrap" MaxHeight="84" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+        <!-- The tail overlaps the body's bottom line by one pixel, so the outline runs around both. -->
+        <Canvas x:Name="Tail" Grid.Row="1" Width="17" Height="16" Margin="0,-1,30,0" HorizontalAlignment="Right">
+            <Path Fill="{DynamicResource Xp.Tooltip}" Data="M1,0 L16,0 L16,15 Z" />
+            <Path Stroke="{DynamicResource Xp.TooltipBorder}" StrokeThickness="1" StrokeLineJoin="Round"
+                  Data="M0.5,0.5 L15.5,15.5 L15.5,0.5" />
+        </Canvas>
+    </Grid>
+</Window>

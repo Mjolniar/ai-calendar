@@ -1,0 +1,43 @@
+<xp:XpWindow x:Class="AICalendar.Desktop.ConnectionWindow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:xp="clr-namespace:AICalendar.Desktop.Xp"
+             Title="Cloud Connection" Width="520" SizeToContent="Height" ResizeMode="NoResize"
+             ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+    <StackPanel Margin="12,12,12,11">
+        <DockPanel Margin="2,0,2,10">
+            <Image x:Name="StateIcon" DockPanel.Dock="Left" Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Top" />
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock x:Name="StateTitle" FontWeight="Bold" TextWrapping="Wrap" />
+                <TextBlock x:Name="StateDetail" Margin="0,3,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+        </DockPanel>
+        <GroupBox x:Name="PairGroup" Header="Pair this PC">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Label Grid.Row="0" Grid.Column="0" Content="_Bridge address:" Target="{Binding ElementName=ServerUrlBox}"
+                       Padding="0" Margin="0,0,10,0" VerticalAlignment="Center" Foreground="{DynamicResource Xp.Text}" />
+                <TextBox Grid.Row="0" Grid.Column="1" x:Name="ServerUrlBox" />
+                <Label Grid.Row="1" Grid.Column="0" Content="_Pairing code:" Target="{Binding ElementName=PairingCodeBox}"
+                       Padding="0" Margin="0,8,10,0" VerticalAlignment="Center" Foreground="{DynamicResource Xp.Text}" />
+                <PasswordBox Grid.Row="1" Grid.Column="1" x:Name="PairingCodeBox" Margin="0,8,0,0" PasswordChar="*" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Xp.TextDim}"
+                           Text="The code is used once and is not saved. The connection itself is stored encrypted for your Windows account." />
+            </Grid>
+        </GroupBox>
+        <TextBlock x:Name="StatusText" Margin="2,8,2,0" TextWrapping="Wrap" Visibility="Collapsed" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="ConnectButton" Content="Connect" IsDefault="True" Click="Connect_Click" />
+            <Button Content="Close" IsCancel="True" Margin="8,0,0,0" />
+        </StackPanel>
+    </StackPanel>
+</xp:XpWindow>

@@ -1,0 +1,10 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:statusBarColor">@color/xp_title_blue</item>
+        <item name="android:navigationBarColor">@color/xp_taskbar_blue</item>
+        <item name="android:windowBackground">@color/xp_face</item>
+        <item name="android:colorAccent">@color/xp_highlight</item>
+    </style>
+</resources>

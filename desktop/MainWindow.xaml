@@ -1,0 +1,407 @@
+<xp:XpWindow x:Class="AICalendar.Desktop.MainWindow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:AICalendar.Desktop"
+             xmlns:xp="clr-namespace:AICalendar.Desktop.Xp"
+             Title="AI Calendar" Width="1000" Height="720" MinWidth="720" MinHeight="480"
+             WindowStartupLocation="CenterScreen" Icon="AppIcon.ico">
+    <xp:XpWindow.Resources>
+        <BooleanToVisibilityConverter x:Key="Show" />
+
+        <!-- "Today (2)" with a rule that fades out to the right, like a file list shown in groups. -->
+        <DataTemplate DataType="{x:Type local:GroupHeaderRow}">
+            <StackPanel Margin="10,11,20,4">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Label}" FontWeight="Bold" Foreground="{DynamicResource Xp.HeaderText}" />
+                    <TextBlock Text="{Binding CountText}" Margin="6,0,0,0" FontSize="12" VerticalAlignment="Bottom"
+                               Foreground="{DynamicResource Xp.TextDim}" />
+                </StackPanel>
+                <Border Height="2" Margin="0,3,0,0" Background="{DynamicResource Xp.HeaderRule}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- One reminder: a compact two-line row; selecting it opens the details and actions below. -->
+        <DataTemplate DataType="{x:Type local:ReminderRow}">
+            <StackPanel>
+                <Grid x:Name="Row" MinHeight="44" Background="Transparent">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="5" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Background="{Binding Accent}" />
+                    <CheckBox Grid.Column="1" Margin="11,0,11,0" VerticalAlignment="Center" Click="RowDone_Click"
+                              IsChecked="{Binding IsDone, Mode=OneWay}" ToolTip="{Binding DoneToolTip}" />
+                    <StackPanel Grid.Column="2" Margin="0,5,0,6" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,1"
+                                    Visibility="{Binding HasCaption, Converter={StaticResource Show}}">
+                            <Border Background="{DynamicResource Xp.TagFill}" BorderBrush="{DynamicResource Xp.TagBorder}"
+                                    BorderThickness="1" Padding="4,0,5,0" Margin="0,0,6,0"
+                                    Visibility="{Binding HasTag, Converter={StaticResource Show}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{StaticResource Icon.Warning}" Width="11" Height="11" Margin="0,0,3,0" />
+                                    <TextBlock Text="{Binding Tag}" FontSize="11" FontWeight="Bold"
+                                               Foreground="{DynamicResource Xp.TagText}" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="Course" Text="{Binding Course}" FontSize="11" FontWeight="Bold"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource Xp.TextDim}" />
+                        </StackPanel>
+                        <TextBlock x:Name="Title" Text="{Binding Title}" FontSize="14" TextTrimming="CharacterEllipsis" />
+                        <DockPanel Margin="0,1,0,0">
+                            <Border DockPanel.Dock="Left" Width="9" Height="9" Margin="0,1,6,0" VerticalAlignment="Center"
+                                    Background="{Binding Accent}" BorderBrush="{DynamicResource Xp.SwatchEdge}" BorderThickness="1" />
+                            <TextBlock x:Name="Secondary" Text="{Binding Secondary}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource Xp.TextDim}" />
+                        </DockPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" Margin="12,0,22,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Image Source="{StaticResource Icon.Repeat}" Width="14" Height="14" Margin="0,0,4,0" ToolTip="Repeats"
+                                   Visibility="{Binding IsRepeating, Converter={StaticResource Show}}" />
+                            <Image Source="{StaticResource Icon.Warning}" Width="14" Height="14" Margin="0,0,4,0" ToolTip="Critical"
+                                   Visibility="{Binding IsCritical, Converter={StaticResource Show}}" />
+                            <TextBlock x:Name="When" Text="{Binding PrimaryWhen}" FontSize="12" FontWeight="Bold" />
+                        </StackPanel>
+                        <TextBlock x:Name="WhenDetail" Text="{Binding SecondaryWhen}" FontSize="11.5" HorizontalAlignment="Right"
+                                   Foreground="{DynamicResource Xp.TextDim}" />
+                    </StackPanel>
+                </Grid>
+                <Grid x:Name="Details" Visibility="Collapsed" Background="{DynamicResource Xp.FaceLight}">
+                    <Border Width="5" HorizontalAlignment="Left" Background="{Binding Accent}" />
+                    <StackPanel Margin="17,8,22,11">
+                        <ItemsControl ItemsSource="{Binding Details}" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="56" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Label}" Foreground="{DynamicResource Xp.TextDim}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBox Style="{StaticResource Xp.SelectableText}" Text="{Binding Body, Mode=OneWay}" Margin="-2,6,0,0"
+                                 MaxHeight="230" VerticalScrollBarVisibility="Auto"
+                                 Visibility="{Binding HasBody, Converter={StaticResource Show}}" />
+                        <WrapPanel Margin="0,10,0,0">
+                            <Button Click="RowDone_Click" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image x:Name="DoneIcon" Source="{StaticResource Icon.Check}" Width="16" Height="16" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding DoneLabel}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="RowOpen_Click" Margin="0,0,8,0"
+                                    Visibility="{Binding CanOpenLink, Converter={StaticResource Show}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{StaticResource Icon.OpenLink}" Width="16" Height="16" Margin="0,0,5,0" />
+                                    <TextBlock Text="Open in Canvas" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Click="RowDelete_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{StaticResource Icon.Delete}" Width="16" Height="16" Margin="0,0,5,0" />
+                                    <TextBlock Text="Delete" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+                <Border Height="1" Background="{DynamicResource Xp.Divider}" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsDone}" Value="True">
+                    <Setter TargetName="DoneIcon" Property="Source" Value="{StaticResource Icon.Restore}" />
+                    <Setter TargetName="Title" Property="TextDecorations" Value="Strikethrough" />
+                    <Setter TargetName="Title" Property="Foreground" Value="{DynamicResource Xp.TextDim}" />
+                </DataTrigger>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Xp.RowHover}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Xp.Highlight}" />
+                    <Setter TargetName="Title" Property="Foreground" Value="{DynamicResource Xp.HighlightText}" />
+                    <Setter TargetName="Title" Property="TextWrapping" Value="Wrap" />
+                    <Setter TargetName="Title" Property="TextTrimming" Value="None" />
+                    <Setter TargetName="Course" Property="Foreground" Value="{DynamicResource Xp.HighlightTextDim}" />
+                    <Setter TargetName="Secondary" Property="Foreground" Value="{DynamicResource Xp.HighlightTextDim}" />
+                    <Setter TargetName="When" Property="Foreground" Value="{DynamicResource Xp.HighlightText}" />
+                    <Setter TargetName="WhenDetail" Property="Foreground" Value="{DynamicResource Xp.HighlightTextDim}" />
+                    <Setter TargetName="Details" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- One day of the month grid: blue when selected, red ring on today, marks under the number. -->
+        <DataTemplate DataType="{x:Type local:DayCell}">
+            <Button x:Name="Cell" Click="Day_Click" ToolTip="{Binding ToolTip}" Focusable="False" MinWidth="0" MinHeight="0"
+                    Padding="0" Visibility="{Binding IsDay, Converter={StaticResource Show}}">
+                <Button.Template>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="Plate" Margin="1" Height="46" CornerRadius="3" Background="Transparent"
+                                BorderBrush="Transparent" BorderThickness="1.5" SnapsToDevicePixels="True">
+                            <StackPanel Margin="0,3,0,0">
+                                <TextBlock x:Name="Number" Text="{Binding Number}" HorizontalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,3,0,0" Height="11">
+                                    <Image x:Name="Warn" Source="{StaticResource Icon.Warning}" Width="11" Height="11"
+                                           Margin="0,0,2,0" Visibility="Collapsed" />
+                                    <ItemsControl ItemsSource="{Binding Dots}" Focusable="False" VerticalAlignment="Center">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Ellipse Width="6" Height="6" Margin="1,0" Fill="{Binding}"
+                                                         Stroke="{DynamicResource Xp.SwatchEdge}" StrokeThickness="0.5" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Plate" Property="Background" Value="{DynamicResource Xp.RowHover}" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding HasAssessment}" Value="True">
+                                <Setter TargetName="Warn" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsToday}" Value="True">
+                                <Setter TargetName="Plate" Property="BorderBrush" Value="{DynamicResource Xp.Today}" />
+                                <Setter TargetName="Number" Property="FontWeight" Value="Bold" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter TargetName="Plate" Property="Background" Value="{DynamicResource Xp.Highlight}" />
+                                <Setter TargetName="Number" Property="Foreground" Value="{DynamicResource Xp.HighlightText}" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+        </DataTemplate>
+    </xp:XpWindow.Resources>
+
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="E_xit" Click="Exit_Click" />
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem x:Name="ListMenuItem" Header="_List" Tag="Radio" Click="ListMode_Click" />
+                <MenuItem x:Name="CalendarMenuItem" Header="_Calendar" Tag="Radio" Click="CalendarMode_Click" />
+                <Separator />
+                <MenuItem Header="_Find..." InputGestureText="Ctrl+F" Click="Find_Click">
+                    <MenuItem.Icon>
+                        <Image Source="{StaticResource Icon.Find}" />
+                    </MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Tools">
+                <MenuItem x:Name="SyncMenuItem" Header="_Sync Now" InputGestureText="F5" Click="Sync_Click">
+                    <MenuItem.Icon>
+                        <Image Source="{StaticResource Icon.Sync}" />
+                    </MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="Cloud _Connection..." Click="Connection_Click">
+                    <MenuItem.Icon>
+                        <Image Source="{StaticResource Icon.Cloud}" />
+                    </MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="_Options..." Click="Options_Click" />
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About AI Calendar" Click="About_Click">
+                    <MenuItem.Icon>
+                        <Image Source="{StaticResource Icon.Info}" />
+                    </MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+        </Menu>
+
+        <!-- Toolbar -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource Xp.Face}" Padding="4,2,6,3">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <Grid>
+                        <TextBox x:Name="FindBox" Width="210" Padding="3,3,22,3" TextChanged="FindBox_TextChanged"
+                                 ToolTip="Find reminders by title, place, notes or class (Ctrl+F)" />
+                        <Button x:Name="FindClear" Style="{StaticResource Xp.DismissButton}" HorizontalAlignment="Right"
+                                Margin="0,0,1,0" ToolTip="Clear" Visibility="Collapsed" Click="FindClear_Click" />
+                    </Grid>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="SyncButton" Style="{StaticResource Xp.ToolButton}" Click="Sync_Click" ToolTip="Sync now (F5)">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Icon.Sync}" Width="20" Height="20" />
+                            <TextBlock Text="Sync" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Separator Style="{StaticResource Xp.EtchedVertical}" Margin="3,3,5,3" />
+                    <RadioButton x:Name="ListModeButton" Style="{StaticResource Xp.ToolButton}" GroupName="ViewMode"
+                                 Click="ListMode_Click" ToolTip="Show reminders as a list">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Icon.ViewList}" Width="20" Height="20" />
+                            <TextBlock Text="List" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="CalendarModeButton" Style="{StaticResource Xp.ToolButton}" GroupName="ViewMode"
+                                 Click="CalendarMode_Click" ToolTip="Show a month and the reminders of one day">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Icon.ViewCalendar}" Width="20" Height="20" />
+                            <TextBlock Text="Calendar" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource Xp.Face}" BorderBrush="{DynamicResource Xp.StatusEdge}"
+                BorderThickness="0,1,0,0">
+            <DockPanel Height="24">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Separator Style="{StaticResource Xp.EtchedVertical}" Margin="0,3" />
+                    <TextBlock x:Name="CountText" Margin="9,0" MinWidth="86" VerticalAlignment="Center" />
+                    <Separator Style="{StaticResource Xp.EtchedVertical}" Margin="0,3" />
+                    <Image x:Name="CloudIcon" Width="16" Height="16" Margin="9,0,5,0" VerticalAlignment="Center" />
+                    <TextBlock x:Name="CloudText" Margin="0,0,20,0" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock x:Name="SyncStatus" Text="Ready" Margin="8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
+        <!-- Confirmation with Undo, shown for a few seconds after a change -->
+        <Border x:Name="ActionBar" DockPanel.Dock="Bottom" Visibility="Collapsed" Style="{StaticResource Xp.InfoBar}"
+                BorderThickness="0,1,0,0">
+            <DockPanel LastChildFill="False">
+                <Button DockPanel.Dock="Right" Style="{StaticResource Xp.DismissButton}" Click="ActionBarClose_Click" />
+                <Image Source="{StaticResource Icon.Info}" Width="16" Height="16" Margin="0,0,7,0" />
+                <TextBlock x:Name="ActionBarText" VerticalAlignment="Center" MaxWidth="560" TextTrimming="CharacterEllipsis" />
+                <Button x:Name="ActionBarLink" Style="{StaticResource Xp.LinkButton}" Content="Undo" Margin="12,0,0,0"
+                        VerticalAlignment="Center" Click="ActionBarLink_Click" />
+            </DockPanel>
+        </Border>
+
+        <!-- Tabs -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource Xp.Face}" BorderBrush="{DynamicResource Xp.TabBorder}"
+                BorderThickness="0,0,0,1" Padding="8,3,8,0">
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="LifeTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Content="Life" Click="Section_Click" />
+                <RadioButton x:Name="SchoolTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Content="School" Click="Section_Click" />
+                <RadioButton x:Name="DeliveriesTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Content="Deliveries" Click="Section_Click" />
+                <RadioButton x:Name="AllTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Content="All" Click="Section_Click" />
+                <RadioButton x:Name="ArchivedTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Content="Archived" Click="Section_Click" />
+            </StackPanel>
+        </Border>
+
+        <!-- Notices -->
+        <Border x:Name="ConnectBar" DockPanel.Dock="Top" Visibility="Collapsed" Style="{StaticResource Xp.InfoBar}"
+                Cursor="Hand" MouseLeftButtonUp="ConnectBar_Click">
+            <DockPanel>
+                <Image Source="{StaticResource Icon.CloudOff}" Width="18" Height="18" Margin="0,0,8,0" />
+                <TextBlock x:Name="ConnectBarText" VerticalAlignment="Center" TextWrapping="Wrap"
+                           Text="Not connected to the cloud. Click to pair this PC." />
+            </DockPanel>
+        </Border>
+        <Border x:Name="IssueBar" DockPanel.Dock="Top" Visibility="Collapsed" Style="{StaticResource Xp.InfoBar}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Style="{StaticResource Xp.DismissButton}" Click="IssueBarClose_Click" />
+                <Image Source="{StaticResource Icon.Warning}" Width="18" Height="18" Margin="0,0,8,0" />
+                <TextBlock x:Name="IssueBarText" VerticalAlignment="Center" TextWrapping="Wrap" />
+            </DockPanel>
+        </Border>
+
+        <!-- Class filter, School tab only -->
+        <Border x:Name="ClassRow" DockPanel.Dock="Top" Visibility="Collapsed" Background="{DynamicResource Xp.Face}"
+                BorderBrush="{DynamicResource Xp.Shadow}" BorderThickness="0,0,0,1" Padding="10,5">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Class:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="CourseFilter" Width="300" SelectionChanged="CourseFilter_SelectionChanged">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="10" Height="10" Margin="0,1,7,0" VerticalAlignment="Center"
+                                        Background="{Binding Color}" BorderBrush="{DynamicResource Xp.SwatchEdge}"
+                                        BorderThickness="1" Visibility="{Binding HasColor, Converter={StaticResource Show}}" />
+                                <TextBlock Text="{Binding Label}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Month view -->
+            <Border x:Name="CalendarPanel" Grid.Column="0" Width="376" Visibility="Collapsed" Padding="10,8,10,10"
+                    Background="{DynamicResource Xp.Face}" BorderBrush="{DynamicResource Xp.Shadow}" BorderThickness="0,0,1,0">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,6">
+                        <Button DockPanel.Dock="Left" MinWidth="30" Padding="0" Click="PreviousMonth_Click" ToolTip="Previous month">
+                            <Path Width="17" Height="17" Fill="{DynamicResource Xp.Text}" Data="{StaticResource Xp.ArrowLeft}" />
+                        </Button>
+                        <Button DockPanel.Dock="Right" MinWidth="30" Padding="0" Click="NextMonth_Click" ToolTip="Next month">
+                            <Path Width="17" Height="17" Fill="{DynamicResource Xp.Text}" Data="{StaticResource Xp.ArrowRight}" />
+                        </Button>
+                        <Button DockPanel.Dock="Right" Content="Today" MinWidth="58" Margin="0,0,6,0" Click="Today_Click" />
+                        <TextBlock x:Name="MonthHeading" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <Border Background="{DynamicResource Xp.Window}" BorderBrush="{DynamicResource Xp.FieldBorder}"
+                            BorderThickness="1" Padding="1">
+                        <StackPanel>
+                            <UniformGrid Columns="7" Margin="0,5,0,4" TextElement.Foreground="{DynamicResource Xp.GroupText}"
+                                         TextElement.FontSize="12">
+                                <!-- Weeks run Monday to Sunday; ReminderText.LeadingBlankDays places the 1st to match. -->
+                                <TextBlock Text="Mon" TextAlignment="Center" />
+                                <TextBlock Text="Tue" TextAlignment="Center" />
+                                <TextBlock Text="Wed" TextAlignment="Center" />
+                                <TextBlock Text="Thu" TextAlignment="Center" />
+                                <TextBlock Text="Fri" TextAlignment="Center" />
+                                <TextBlock Text="Sat" TextAlignment="Center" />
+                                <TextBlock Text="Sun" TextAlignment="Center" />
+                            </UniformGrid>
+                            <Border Height="1" Margin="4,0" Background="{DynamicResource Xp.Shadow}" />
+                            <ItemsControl x:Name="MonthDays" Focusable="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="7" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- Reminder list -->
+            <Grid Grid.Column="1" Background="{DynamicResource Xp.Window}">
+                <ListBox x:Name="ReminderList" Style="{StaticResource Xp.List}" SelectionMode="Single"
+                         PreviewMouseLeftButtonDown="ReminderList_PreviewMouseLeftButtonDown"
+                         PreviewMouseWheel="ReminderList_PreviewMouseWheel"
+                         PreviewKeyDown="ReminderList_PreviewKeyDown"
+                         SelectionChanged="ReminderList_SelectionChanged" />
+                <StackPanel x:Name="EmptyPanel" Visibility="Collapsed" HorizontalAlignment="Center" Margin="24,84,24,24">
+                    <Image Source="{StaticResource Icon.App}" Width="40" Height="40" />
+                    <TextBlock x:Name="EmptyText" Margin="0,10,0,4" HorizontalAlignment="Center" TextAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="440" Foreground="{DynamicResource Xp.TextDim}" />
+                    <Button x:Name="EmptyLink" Style="{StaticResource Xp.LinkButton}" HorizontalAlignment="Center"
+                            Visibility="Collapsed" Click="EmptyLink_Click" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</xp:XpWindow>

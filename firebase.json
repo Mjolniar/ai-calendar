@@ -1,0 +1,25 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "functions": {
+    "source": "bridge",
+    "runtime": "nodejs22",
+    "predeploy": [
+      "node \"$RESOURCE_DIR/node_modules/typescript/bin/tsc\" -p \"$RESOURCE_DIR/tsconfig.json\""
+    ],
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "*.local",
+      ".env.api-token",
+      ".env.pairing-code",
+      ".env.example",
+      "test",
+      "audit",
+      "*.log"
+    ]
+  }
+}

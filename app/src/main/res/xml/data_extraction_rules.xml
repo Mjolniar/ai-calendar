@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: no cloud backup, and never copy the Keystore-encrypted token to another device
+     (the key cannot move with it; the new phone must pair itself). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="bridge_secure.xml" />
+        <exclude domain="sharedpref" path="pending_changes.xml" />
+        <exclude domain="sharedpref" path="scheduled_alarm_kinds.xml" />
+        <exclude domain="sharedpref" path="snoozed_until.xml" />
+        <exclude domain="sharedpref" path="alarm_meta.xml" />
+    </device-transfer>
+</data-extraction-rules>

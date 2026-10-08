@@ -1,0 +1,194 @@
+<!--
+  Noir: the dark palette. The same chrome as Luna in charcoal, in the manner of XP's dark visual
+  styles. It must define exactly the keys that Luna.xaml defines.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Surfaces -->
+    <SolidColorBrush x:Key="Xp.Face" Color="#2D2F34" />
+    <SolidColorBrush x:Key="Xp.FaceLight" Color="#26282C" />
+    <SolidColorBrush x:Key="Xp.Window" Color="#1D1E21" />
+    <SolidColorBrush x:Key="Xp.Menu" Color="#303237" />
+    <SolidColorBrush x:Key="Xp.Tooltip" Color="#3A3824" />
+    <SolidColorBrush x:Key="Xp.RowHover" Color="#24262B" />
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="Xp.Text" Color="#E9E7E0" />
+    <SolidColorBrush x:Key="Xp.TextDim" Color="#A8A69C" />
+    <SolidColorBrush x:Key="Xp.TextDisabled" Color="#6A6962" />
+    <SolidColorBrush x:Key="Xp.TooltipText" Color="#F4F1D6" />
+    <SolidColorBrush x:Key="Xp.ErrorText" Color="#FF8370" />
+    <SolidColorBrush x:Key="Xp.Link" Color="#78AEFF" />
+    <SolidColorBrush x:Key="Xp.GroupText" Color="#86B4FF" />
+    <SolidColorBrush x:Key="Xp.HeaderText" Color="#A3C2FA" />
+    <SolidColorBrush x:Key="Xp.TagText" Color="#FFD88A" />
+    <SolidColorBrush x:Key="Xp.HighlightText" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Xp.HighlightTextDim" Color="#E0FFFFFF" />
+
+    <!-- Lines and borders -->
+    <SolidColorBrush x:Key="Xp.Shadow" Color="#151618" />
+    <SolidColorBrush x:Key="Xp.EtchLight" Color="#3D4046" />
+    <SolidColorBrush x:Key="Xp.Divider" Color="#2D2F34" />
+    <SolidColorBrush x:Key="Xp.FieldBorder" Color="#5B6B82" />
+    <SolidColorBrush x:Key="Xp.ButtonBorder" Color="#0E0F11" />
+    <SolidColorBrush x:Key="Xp.DisabledBorder" Color="#44464C" />
+    <SolidColorBrush x:Key="Xp.GroupBorder" Color="#484B52" />
+    <SolidColorBrush x:Key="Xp.TabBorder" Color="#55585F" />
+    <SolidColorBrush x:Key="Xp.MenuBorder" Color="#5C5F68" />
+    <SolidColorBrush x:Key="Xp.TooltipBorder" Color="#8C875C" />
+    <SolidColorBrush x:Key="Xp.TagBorder" Color="#B88C32" />
+    <SolidColorBrush x:Key="Xp.SwatchEdge" Color="#66FFFFFF" />
+    <LinearGradientBrush x:Key="Xp.HeaderRule" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Offset="0" Color="#5878C4" />
+        <GradientStop Offset="1" Color="#005878C4" />
+    </LinearGradientBrush>
+
+    <!-- Accents -->
+    <SolidColorBrush x:Key="Xp.Highlight" Color="#316AC5" />
+    <SolidColorBrush x:Key="Xp.Today" Color="#FF5C40" />
+    <SolidColorBrush x:Key="Xp.TabAccent" Color="#E68B2C" />
+    <SolidColorBrush x:Key="Xp.TabAccentLight" Color="#FFC73C" />
+    <SolidColorBrush x:Key="Xp.TagFill" Color="#4B3B14" />
+    <SolidColorBrush x:Key="Xp.CheckBorder" Color="#8094B4" />
+    <SolidColorBrush x:Key="Xp.CheckGreen" Color="#4CC552" />
+
+    <!-- Push buttons -->
+    <LinearGradientBrush x:Key="Xp.ButtonFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#585C66" />
+        <GradientStop Offset="0.86" Color="#44474F" />
+        <GradientStop Offset="1" Color="#35373D" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.ButtonPressedFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#2A2C31" />
+        <GradientStop Offset="0.08" Color="#34373D" />
+        <GradientStop Offset="0.94" Color="#3A3D44" />
+        <GradientStop Offset="1" Color="#454850" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="Xp.ButtonDisabledFill" Color="#313338" />
+    <LinearGradientBrush x:Key="Xp.DefaultRing" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#6FA0E8" />
+        <GradientStop Offset="0.3" Color="#4878C8" />
+        <GradientStop Offset="0.7" Color="#5F8FDA" />
+        <GradientStop Offset="1" Color="#3F6DB8" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.HoverRing" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#F2C46A" />
+        <GradientStop Offset="0.3" Color="#E0A640" />
+        <GradientStop Offset="0.7" Color="#D4962C" />
+        <GradientStop Offset="1" Color="#B87A12" />
+    </LinearGradientBrush>
+
+    <!-- Check boxes -->
+    <LinearGradientBrush x:Key="Xp.CheckFill" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#17181B" />
+        <GradientStop Offset="1" Color="#2F3136" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.CheckPressedFill" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#0E0F11" />
+        <GradientStop Offset="1" Color="#222428" />
+    </LinearGradientBrush>
+
+    <!-- Tabs -->
+    <LinearGradientBrush x:Key="Xp.TabFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#3D4047" />
+        <GradientStop Offset="0.5" Color="#34363C" />
+        <GradientStop Offset="1" Color="#2B2D31" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="Xp.TabSelected" Color="#1D1E21" />
+
+    <!-- Drop-down and scroll-bar buttons -->
+    <LinearGradientBrush x:Key="Xp.DropFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#52658F" />
+        <GradientStop Offset="0.5" Color="#40527A" />
+        <GradientStop Offset="1" Color="#36466B" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.DropHoverFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#6278A8" />
+        <GradientStop Offset="0.5" Color="#4E6292" />
+        <GradientStop Offset="1" Color="#425581" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.DropPressedFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#2C3A5C" />
+        <GradientStop Offset="1" Color="#384A72" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="Xp.DropBorder" Color="#7388B8" />
+    <SolidColorBrush x:Key="Xp.DropChevron" Color="#E3EAFA" />
+
+    <!-- Scroll bars -->
+    <LinearGradientBrush x:Key="Xp.ScrollTrack" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Offset="0" Color="#222327" />
+        <GradientStop Offset="1" Color="#2A2C30" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.ScrollTrackH" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#222327" />
+        <GradientStop Offset="1" Color="#2A2C30" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.ScrollThumb" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Offset="0" Color="#52658F" />
+        <GradientStop Offset="1" Color="#40527A" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.ScrollThumbH" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#52658F" />
+        <GradientStop Offset="1" Color="#40527A" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="Xp.ScrollThumbHover" Color="#6278A8" />
+    <SolidColorBrush x:Key="Xp.ScrollThumbBorder" Color="#7388B8" />
+    <SolidColorBrush x:Key="Xp.ScrollGripLight" Color="#9AAEDA" />
+    <SolidColorBrush x:Key="Xp.ScrollGripDark" Color="#25314D" />
+
+    <!-- Toolbar -->
+    <LinearGradientBrush x:Key="Xp.ToolHoverFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#4A4D55" />
+        <GradientStop Offset="1" Color="#3A3D44" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.ToolPressedFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#232529" />
+        <GradientStop Offset="1" Color="#2E3035" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="Xp.ToolBorder" Color="#5C5F68" />
+
+    <!-- Window caption and frame -->
+    <SolidColorBrush x:Key="Xp.WindowFrame" Color="#3F4758" />
+    <SolidColorBrush x:Key="Xp.WindowFrameInactive" Color="#34373E" />
+    <LinearGradientBrush x:Key="Xp.Title" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#6C7890" />
+        <GradientStop Offset="0.1" Color="#2F3644" />
+        <GradientStop Offset="0.45" Color="#232833" />
+        <GradientStop Offset="0.9" Color="#2C3340" />
+        <GradientStop Offset="0.93" Color="#262C37" />
+        <GradientStop Offset="1" Color="#0D0F13" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Xp.TitleInactive" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#4C5058" />
+        <GradientStop Offset="0.1" Color="#34373E" />
+        <GradientStop Offset="0.9" Color="#383B43" />
+        <GradientStop Offset="1" Color="#1E2024" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="Xp.TitleText" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Xp.TitleTextInactive" Color="#A9ADB6" />
+    <SolidColorBrush x:Key="Xp.TitleShadow" Color="#000000" />
+    <RadialGradientBrush x:Key="Xp.Caption" GradientOrigin="0.9,0.9" Center="0.9,0.9" RadiusX="1.25" RadiusY="1.25">
+        <GradientStop Offset="0" Color="#333B4A" />
+        <GradientStop Offset="0.55" Color="#414B5E" />
+        <GradientStop Offset="0.7" Color="#56617A" />
+        <GradientStop Offset="0.9" Color="#A5AFC4" />
+        <GradientStop Offset="1" Color="#E8ECF4" />
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="Xp.CaptionHover" GradientOrigin="0.9,0.9" Center="0.9,0.9" RadiusX="1.25" RadiusY="1.25">
+        <GradientStop Offset="0" Color="#465066" />
+        <GradientStop Offset="0.55" Color="#56627A" />
+        <GradientStop Offset="0.7" Color="#6E7B97" />
+        <GradientStop Offset="0.9" Color="#BAC3D6" />
+        <GradientStop Offset="1" Color="#F2F5FA" />
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="Xp.CaptionPressed" GradientOrigin="0.9,0.9" Center="0.9,0.9" RadiusX="1.25" RadiusY="1.25">
+        <GradientStop Offset="0" Color="#171B23" />
+        <GradientStop Offset="0.6" Color="#232936" />
+        <GradientStop Offset="1" Color="#48536A" />
+    </RadialGradientBrush>
+    <SolidColorBrush x:Key="Xp.CaptionEdge" Color="#C9D0DE" />
+
+    <!-- Status bar -->
+    <SolidColorBrush x:Key="Xp.StatusEdge" Color="#17181A" />
+</ResourceDictionary>

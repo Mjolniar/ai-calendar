@@ -1,0 +1,32 @@
+<xp:XpWindow x:Class="AICalendar.Desktop.AboutWindow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:xp="clr-namespace:AICalendar.Desktop.Xp"
+             Title="About AI Calendar" Width="380" SizeToContent="Height" ResizeMode="NoResize"
+             ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+    <StackPanel Margin="14,12,14,11">
+        <DockPanel>
+            <Image DockPanel.Dock="Left" Source="{StaticResource Icon.AppLarge}" Width="48" Height="48" Margin="0,0,12,0" />
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="AI Calendar" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="VersionText" FontSize="12" Foreground="{DynamicResource Xp.TextDim}" />
+            </StackPanel>
+        </DockPanel>
+        <Separator Style="{StaticResource Xp.Etched}" Margin="0,11,0,9" />
+        <ItemsControl x:Name="Facts" Focusable="False">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Grid Margin="0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="92" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="12" />
+                        <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="12" TextWrapping="Wrap" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Content="OK" IsDefault="True" IsCancel="True" HorizontalAlignment="Right" Margin="0,13,0,0" />
+    </StackPanel>
+</xp:XpWindow>

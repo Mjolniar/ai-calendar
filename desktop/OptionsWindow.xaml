@@ -1,0 +1,20 @@
+<xp:XpWindow x:Class="AICalendar.Desktop.OptionsWindow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:xp="clr-namespace:AICalendar.Desktop.Xp"
+             Title="Options" Width="380" SizeToContent="Height" ResizeMode="NoResize"
+             ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+    <StackPanel Margin="12,10,12,11">
+        <GroupBox Header="Appearance">
+            <CheckBox x:Name="DarkModeBox" Content="_Dark mode" Click="DarkMode_Click" />
+        </GroupBox>
+        <GroupBox Header="Closing the window" Margin="0,8,0,0">
+            <StackPanel>
+                <CheckBox x:Name="KeepInTrayBox" Content="_Keep running in the notification area" Click="KeepInTray_Click" />
+                <TextBlock Margin="22,5,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Xp.TextDim}"
+                           Text="Reminders only pop up while AI Calendar is running. With this on, closing the window hides it; use File &gt; Exit to quit." />
+            </StackPanel>
+        </GroupBox>
+        <Button Content="Close" IsDefault="True" IsCancel="True" HorizontalAlignment="Right" Margin="0,12,0,0" />
+    </StackPanel>
+</xp:XpWindow>
