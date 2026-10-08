@@ -33,6 +33,8 @@ The screenshots are rendered by the projects' own UI tests from made-up sample r
   next 60 days; editing or deleting one asks "This one" or "This and all future ones".
 - **Canvas LMS:** assignments, quizzes and discussions imported every 30 minutes, with course
   colors, points, submission types and quiz/exam warnings.
+- **Gmail:** through your AI client's own Gmail connector, or forwarded into Outlook.com; see
+  [docs/SETUP-GMAIL.md](docs/SETUP-GMAIL.md).
 - **Outlook.com mail tools (optional):** list, read, move, file into folders and create move-only
   Inbox rules through Microsoft Graph, so an assistant can triage mail. Nothing ever deletes mail.
 - **Windows companion:** list and month views, Find, class filter, balloons while it runs, dark
@@ -61,7 +63,9 @@ runs at $0 to about $1 a month with the phone alone, more if the Windows app sta
    Android app registration, deploy.
 2. [docs/SETUP-CANVAS.md](docs/SETUP-CANVAS.md): link Canvas LMS for the School feed (optional).
 3. [docs/SETUP-AZURE.md](docs/SETUP-AZURE.md): the Microsoft app for Outlook.com mail (optional).
-4. Build and install the phone and Windows apps, pair them, and connect an AI client:
+4. [docs/SETUP-GMAIL.md](docs/SETUP-GMAIL.md): use Gmail through your AI client's Gmail connector,
+   or by forwarding to Outlook.com (optional; the bridge has no Gmail tools of its own).
+5. Build and install the phone and Windows apps, pair them, and connect an AI client:
    [docs/SETUP-FIREBASE.md#connect-the-apps-and-an-ai-client](docs/SETUP-FIREBASE.md#connect-the-apps-and-an-ai-client).
 
 Handing the work to a coding agent (Claude Code, Codex and others)? Point it at
@@ -96,6 +100,10 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | Windows | `scripts/test-desktop.ps1` |
 
 ## Security notes
+
+See [SECURITY.md](SECURITY.md) for the security model, how to report a problem, and a
+checklist for your own deployment. In short:
+
 
 - Nothing secret is in the repository. Secrets live in Firebase Secret Manager; local copies go in
   ignored files (`secrets/`, `bridge/.env.*`).

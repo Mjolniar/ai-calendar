@@ -14,7 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@types/html-to-text": "^9.0.4",
     "express": "5.2.1",
     "firebase-admin": "14.5.0",

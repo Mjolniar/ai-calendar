@@ -1,6 +1,8 @@
 # Microsoft (Azure) setup for Outlook.com mail
 
-Optional. The bridge's `outlook_*` MCP tools let an AI client read and file the mail of one
+Optional. For Gmail, see [SETUP-GMAIL.md](SETUP-GMAIL.md).
+
+The bridge's `outlook_*` MCP tools let an AI client read and file the mail of one
 **personal Microsoft account** (Outlook.com, Hotmail, Live) through Microsoft Graph. Skip this
 and set `MS_CLIENT_ID` and `MS_CLIENT_SECRET` to placeholders; the tools then report that Outlook
 is not configured and everything else works.

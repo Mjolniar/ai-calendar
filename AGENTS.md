@@ -22,11 +22,13 @@ their secrets.
    token; you store it and the Canvas address as secrets from files and redeploy both functions.
 4. **Microsoft (optional):** follow `docs/SETUP-AZURE.md`. The human registers the app and creates
    the client secret in the Entra admin center; you store the values as secrets and redeploy.
-5. **Verify:** `GET <base>/health`, then `tools/mcp-call.ps1 list_series` with the API token.
-6. **Apps:** change `applicationId` and `namespace` in `app/build.gradle.kts` if the human wants
+5. **Gmail (optional):** `docs/SETUP-GMAIL.md`. Options A and B need no code; if the human asks
+   for native Gmail tools, its last section is the brief.
+6. **Verify:** `GET <base>/health`, then `tools/mcp-call.ps1 list_series` with the API token.
+7. **Apps:** change `applicationId` and `namespace` in `app/build.gradle.kts` if the human wants
    their own package (the Firebase Android registration must match), build and install the phone
    app, install the Windows app, and let the human pair both with the pairing code.
-7. **AI client:** the human adds `<base>/mcp` as a custom MCP connector and enters the pairing
+8. **AI client:** the human adds `<base>/mcp` as a custom MCP connector and enters the pairing
    code on the consent page.
 
 ## Commands

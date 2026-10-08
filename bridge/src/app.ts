@@ -43,6 +43,11 @@ export function createApp(store: CalendarStore, notifier: DeviceNotifier, config
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
     res.setHeader("Referrer-Policy", "no-referrer");
+    // HTTPS only from now on, for this host. The functions host is HTTPS only anyway; this keeps a
+    // browser from ever trying plain HTTP first with a pairing code or a token.
+    res.setHeader("Strict-Transport-Security", "max-age=31536000");
+    // Reminders, mail and tokens must never sit in a browser or proxy cache.
+    res.setHeader("Cache-Control", "no-store");
     next();
   });
   // Sized for the largest valid MCP call (a 700k-character planner_state_put or a 50-item batch

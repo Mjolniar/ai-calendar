@@ -20,6 +20,15 @@ function testApp(store = new MemoryCalendarStore()) {
 }
 
 describe("device API", () => {
+  it("sends security headers that keep responses out of caches and frames", async () => {
+    const response = await request(testApp()).get("/health").expect(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.headers["strict-transport-security"]).toBe("max-age=31536000");
+    expect(response.headers["x-frame-options"]).toBe("DENY");
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers["x-powered-by"]).toBeUndefined();
+  });
+
   it("returns Firebase bootstrap data only with the pairing code", async () => {
     const app = testApp();
     await request(app).post("/v1/bootstrap").send({ pairingCode: "bad" }).expect(401);
