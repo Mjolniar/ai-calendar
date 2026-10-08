@@ -46,7 +46,9 @@ The screenshots are rendered by the projects' own UI tests from made-up sample r
 ## Set it up
 
 You need your own Firebase project (Blaze plan, for Cloud Functions and Cloud Scheduler) and,
-for the optional mail tools, a Microsoft Entra app registration.
+for the optional mail tools, a Microsoft Entra app registration. Blaze needs a payment card; a personal calendar
+runs at $0 to about $1 a month with the phone alone, more if the Windows app stays open all day
+(details and ways to keep it at $0: [Running costs](docs/SETUP-FIREBASE.md#running-costs)).
 
 1. [docs/SETUP-FIREBASE.md](docs/SETUP-FIREBASE.md): project, Firestore, Functions, secrets, the
    Android app registration, deploy.
