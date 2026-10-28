@@ -1,0 +1,8 @@
+<resources>
+    <color name="xp_face">#ECE9D8</color>
+    <color name="xp_title_blue">#0050EE</color>
+    <color name="xp_taskbar_blue">#245DDB</color>
+    <color name="xp_highlight">#316AC5</color>
+    <color name="xp_balloon">#FFFFE1</color>
+    <color name="xp_desktop">#3A6EA5</color>
+</resources>

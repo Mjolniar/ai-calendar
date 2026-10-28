@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>AI Calendar</AssemblyName>
+    <RootNamespace>AICalendar.Desktop</RootNamespace>
+    <Version>1.7.0</Version>
+    <!-- The name people see. The exe, assembly and folders keep "AI Calendar" on purpose (README). -->
+    <Product>AI Planner</Product>
+    <AssemblyTitle>AI Planner</AssemblyTitle>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>AppIcon.ico</ApplicationIcon>
+    <!-- WPF app: DPI awareness belongs in app.manifest; WFAC010 only applies to WinForms-hosted apps (WinForms is used here for NotifyIcon only). -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- WinForms is referenced for the notification-area icon alone; its namespaces would make Button, Brush and others ambiguous. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Also a resource, so the window and the notification-area icon can load it. -->
+    <Resource Include="AppIcon.ico" />
+    <InternalsVisibleTo Include="AI.Calendar.Desktop.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The test project lives in a subfolder; keep its files out of this one. -->
+    <Compile Remove="tests\**" />
+    <Page Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+    <None Remove="tests\**" />
+    <None Remove="publish\**" />
+  </ItemGroup>
+</Project>

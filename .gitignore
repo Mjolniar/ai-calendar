@@ -1,0 +1,34 @@
+# Secrets and local configuration: never commit
+secrets/
+bridge/.env*
+!bridge/.env.example
+.firebaserc
+local.properties
+google-services.json
+*.keystore
+*.jks
+
+# Build output
+bridge/release/
+.firebase/
+build/
+app/build/
+.gradle/
+.kotlin/
+ui-harness/build/
+ui-harness/.gradle/
+ui-harness/.kotlin/
+ui-harness/run.log
+bridge/node_modules/
+bridge/dist/
+desktop/bin/
+desktop/obj/
+desktop/publish/
+desktop/tests/bin/
+desktop/tests/obj/
+desktop/tests/artifacts/
+tools/xp-icons/__pycache__/
+*.log
+.idea/
+.vs/
+*.iml

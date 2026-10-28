@@ -1,0 +1,195 @@
+package com.example.aicalendar
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PendingChangesTest {
+    private val remote = PlannerEvent(id = "e1", title = "Server title", startAtMillis = 1_000L, remote = true, courseName = "BIO 227")
+
+    private fun change(op: PendingOp, seq: Long, event: PlannerEvent? = null) = PendingChange("e1", op, event, seq)
+
+    @Test
+    fun deleteWins() {
+        val update = change(PendingOp.UPDATE, 1, remote)
+        assertEquals(PendingOp.DELETE, PendingChanges.coalesce(update, change(PendingOp.DELETE, 2)).op)
+        val merged = PendingChanges.coalesce(change(PendingOp.DELETE, 1), change(PendingOp.UPDATE, 2, remote))
+        assertEquals(PendingOp.DELETE, merged.op)
+        assertEquals(2L, merged.seq)
+    }
+
+    @Test
+    fun doneOnTopOfUpdateKeepsEditsAndMarksDone() {
+        val edited = remote.copy(title = "Edited")
+        val merged = PendingChanges.coalesce(change(PendingOp.UPDATE, 1, edited), change(PendingOp.MARK_DONE, 2))
+        assertEquals(PendingOp.UPDATE, merged.op)
+        assertEquals("Edited", merged.event?.title)
+        assertEquals(true, merged.event?.done)
+        assertEquals(2L, merged.seq)
+    }
+
+    @Test
+    fun laterUpdateReplacesEarlierDone() {
+        val reopened = remote.copy(done = false, title = "Reopened")
+        val merged = PendingChanges.coalesce(change(PendingOp.MARK_DONE, 1), change(PendingOp.UPDATE, 2, reopened))
+        assertEquals(PendingOp.UPDATE, merged.op)
+        assertEquals(false, merged.event?.done)
+    }
+
+    @Test
+    fun overlayKeepsOfflineDoneAgainstStaleServerSnapshot() {
+        val result = PendingChanges.overlay(listOf(remote), mapOf("e1" to change(PendingOp.MARK_DONE, 1)))
+        assertEquals(true, result.single().done)
+    }
+
+    @Test
+    fun overlayAppliesEditsButKeepsServerOnlyFields() {
+        val edited = remote.copy(title = "Phone title", reminderOffsetsMinutes = emptyList(), courseName = "")
+        val result = PendingChanges.overlay(listOf(remote), mapOf("e1" to change(PendingOp.UPDATE, 1, edited))).single()
+        assertEquals("Phone title", result.title)
+        assertEquals(emptyList<Int>(), result.reminderOffsetsMinutes)
+        assertEquals("BIO 227", result.courseName)
+    }
+
+    @Test
+    fun overlayDropsPendingDeletesAndIgnoresUnrelated() {
+        val other = remote.copy(id = "e2")
+        val result = PendingChanges.overlay(listOf(remote, other), mapOf("e1" to change(PendingOp.DELETE, 1)))
+        assertEquals(listOf("e2"), result.map { it.id })
+    }
+
+    @Test
+    fun jsonRoundTrip() {
+        val original = change(PendingOp.UPDATE, 7, remote.copy(done = true)).copy(attempts = 3)
+        assertEquals(original, PendingChange.fromJson(original.toJson()))
+        assertNull(PendingChange.fromJson(org.json.JSONObject("""{"id":"e1","op":"UPDATE","seq":1}""")))
+        assertNull(PendingChange.fromJson(org.json.JSONObject("""{"id":"e1","op":"BOGUS","seq":1}""")))
+    }
+
+    @Test
+    fun notDoneIsQueuedOnItsOwnAndTheLatestStateWins() {
+        assertEquals(PendingOp.MARK_UNDONE, PendingChanges.coalesce(change(PendingOp.MARK_DONE, 1), change(PendingOp.MARK_UNDONE, 2)).op)
+        assertEquals(PendingOp.MARK_DONE, PendingChanges.coalesce(change(PendingOp.MARK_UNDONE, 1), change(PendingOp.MARK_DONE, 2)).op)
+        // Not done on top of a queued edit keeps the edit, reopened.
+        val merged = PendingChanges.coalesce(change(PendingOp.UPDATE, 1, remote.copy(done = true, title = "Edited")), change(PendingOp.MARK_UNDONE, 2))
+        assertEquals(PendingOp.UPDATE, merged.op)
+        assertEquals(false, merged.event?.done)
+        assertEquals("Edited", merged.event?.title)
+        val overlaid = PendingChanges.overlay(listOf(remote.copy(done = true)), mapOf("e1" to change(PendingOp.MARK_UNDONE, 3)))
+        assertEquals(false, overlaid.single().done)
+    }
+
+    @Test
+    fun theServerRevisionIsKeptSoEditsCanSayWhichCopyTheyCameFrom() {
+        val parsed = RemoteEventParser.parseEvent(org.json.JSONObject("""{"id":"e9","title":"Dentist","startAt":"2026-11-05T16:00:00Z","revision":1791489160148}"""))
+        assertEquals(1_791_489_160_148L, parsed.revision)
+        assertEquals(parsed, PlannerEvent.fromJson(parsed.toJson()))
+        assertEquals(0L, PlannerEvent.fromJson(org.json.JSONObject("""{"id":"x","title":"Old copy","startAtMillis":5}""")).revision)
+    }
+
+    @Test
+    fun anUploadCarriesNoCopyAndLeavesTheSnapshotAlone() {
+        val upload = PendingChange("local-1", PendingOp.CREATE, null, 3)
+        assertEquals(upload, PendingChange.fromJson(upload.toJson()))
+        assertEquals(listOf(remote), PendingChanges.overlay(listOf(remote), mapOf("local-1" to upload, "e1" to upload.copy(eventId = "e1"))))
+        // An upload then an edit of the uploaded reminder: the edit is what remains to send.
+        val edited = remote.copy(title = "Edited")
+        val merged = PendingChanges.coalesce(upload, change(PendingOp.UPDATE, 4, edited))
+        assertEquals(PendingOp.UPDATE, merged.op)
+        assertEquals("Edited", merged.event?.title)
+    }
+
+    @Test
+    fun anEditKeepsTheCopyFromBeforeTheFirstQueuedChange() {
+        val first = change(PendingOp.UPDATE, 1, remote.copy(title = "First")).copy(base = remote)
+        val second = change(PendingOp.UPDATE, 2, remote.copy(title = "Second")).copy(base = remote.copy(title = "First"))
+        val merged = PendingChanges.coalesce(first, second)
+        assertEquals("Second", merged.event?.title)
+        assertEquals(remote, merged.base)
+        // Done on top keeps it as well.
+        assertEquals(remote, PendingChanges.coalesce(merged, change(PendingOp.MARK_DONE, 3)).base)
+        // An edit after a queued Done: the copy from before the Done.
+        val afterDone = PendingChanges.coalesce(change(PendingOp.MARK_DONE, 1), change(PendingOp.UPDATE, 2, remote.copy(done = true, title = "X")).copy(base = remote.copy(done = true)))
+        assertEquals(false, afterDone.base?.done)
+        // And it survives a restart.
+        assertEquals(merged, PendingChange.fromJson(merged.toJson()))
+    }
+
+    @Test
+    fun aRefusedEditPutsOnlyThePhonesChangesOnTopOfTheCloudsCopy() {
+        val base = remote.copy(title = "Dentist", notes = "Bring card", startAtMillis = 1_000L, revision = 10)
+        // On the phone: a new time. In the cloud meanwhile: new notes.
+        val local = base.copy(startAtMillis = 2_000L)
+        val cloud = base.copy(notes = "Bring card and forms", revision = 11)
+        val result = ReminderMerge.merge(base, local, cloud)
+        val merged = result.merged!!
+        assertEquals(2_000L, merged.startAtMillis)
+        assertEquals("Bring card and forms", merged.notes)
+        assertEquals("sent with the cloud copy's revision", 11L, merged.revision)
+        assertTrue(result.conflicts.isEmpty())
+        // The same field changed on both sides to different values: nothing is merged.
+        val clash = ReminderMerge.merge(base, local.copy(title = "Dentist (moved)"), cloud.copy(title = "Dentist cleaning", startAtMillis = 3_000L))
+        assertNull(clash.merged)
+        assertEquals(listOf("title", "time"), clash.conflicts)
+        // Changed the same way on both sides is no conflict.
+        assertEquals(2_000L, ReminderMerge.merge(base, local, cloud.copy(startAtMillis = 2_000L)).merged!!.startAtMillis)
+        assertTrue(ReminderMerge.issue("Dentist", clash.conflicts).contains("\"Dentist\""))
+        assertTrue(ReminderMerge.issue("Dentist", clash.conflicts).contains("(title, time)"))
+    }
+
+    @Test
+    fun anEditKeepsTheCloudsTimeZoneAndCategory() {
+        val occurrence = remote.copy(seriesId = "s1", occurrenceDate = "2026-11-02", category = EventCategory.AUTO, domain = EventDomain.LIFE, title = "Take out the trash")
+        val edit = ReminderBody.edit(occurrence)
+        assertFalse("the cloud keeps the stored zone", edit.has("timeZone"))
+        assertEquals("automatic", edit.getString("category"))
+        assertEquals("life", edit.getString("domain"))
+        assertEquals("medical", ReminderBody.edit(occurrence.copy(category = EventCategory.MEDICAL)).getString("category"))
+        // An upload still says where it was made and what it is.
+        val upload = ReminderBody.upload(occurrence.copy(title = "Pharmacy pickup"), java.time.ZoneId.of("America/Denver"))
+        assertEquals("America/Denver", upload.getString("timeZone"))
+        assertEquals("medical", upload.getString("category"))
+    }
+
+    @Test
+    fun aHiddenReminderIsForgottenOnceTheCloudNoLongerListsIt() {
+        val hidden = setOf("gone", "delete-queued", "still-listed")
+        assertEquals(
+            setOf("delete-queued", "still-listed"),
+            HiddenRemoteIds.prune(hidden, listed = setOf("still-listed", "other"), queued = setOf("delete-queued")),
+        )
+        assertTrue(HiddenRemoteIds.prune(emptySet(), setOf("a"), emptySet()).isEmpty())
+    }
+
+    @Test
+    fun seriesChangesRoundTripUnderTheirOwnKey() {
+        val created = PendingChange(PendingChange.seriesKey("k1"), PendingOp.SERIES_CREATE, null, 4, payload = """{"title":"Trash"}""")
+        assertEquals("series:k1", created.eventId)
+        assertEquals(created, PendingChange.fromJson(created.toJson()))
+        val deleted = PendingChange(PendingChange.seriesKey("k2"), PendingOp.SERIES_DELETE, null, 5, target = "s1", payload = "2026-10-23")
+        assertEquals(deleted, PendingChange.fromJson(deleted.toJson()))
+        assertTrue(PendingOp.SERIES_UPDATE.isSeries)
+        assertEquals(false, PendingOp.UPDATE.isSeries)
+    }
+
+    @Test
+    fun queuedSeriesDeleteHidesItsOccurrencesUntilDelivered() {
+        fun occurrence(id: String, date: String, done: Boolean = false, series: String = "s1") =
+            PlannerEvent(id = id, title = "Trash", startAtMillis = 1_000L, remote = true, seriesId = series, occurrenceDate = date, done = done)
+        val snapshot = listOf(
+            occurrence("a", "2026-10-16"),
+            occurrence("b", "2026-10-23"),
+            occurrence("c", "2026-10-30", done = true),
+            occurrence("d", "2026-10-30", series = "other"),
+            remote,
+        )
+        val fromDate = PendingChange("series:k", PendingOp.SERIES_DELETE, null, 1, target = "s1", payload = "2026-10-23")
+        assertEquals(listOf("a", "c", "d", "e1"), PendingChanges.overlay(snapshot, mapOf(fromDate.eventId to fromDate)).map { it.id })
+        // Without a date: every unfinished occurrence still ahead.
+        val whole = fromDate.copy(payload = "")
+        assertTrue(whole.removes(occurrence("x", "2026-10-16").copy(startAtMillis = 5_000L), nowMillis = 2_000L))
+        assertEquals(false, whole.removes(occurrence("y", "2026-10-02").copy(startAtMillis = 1_000L), nowMillis = 2_000L))
+    }
+}

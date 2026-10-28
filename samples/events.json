@@ -1,0 +1,25 @@
+{
+  "events": [
+    {
+      "title": "Flight to Denver",
+      "startAt": "2026-08-24 06:30",
+      "location": "Airport",
+      "notes": "Arrive by 4:30 AM. Check bag cutoff.",
+      "critical": true
+    },
+    {
+      "title": "Tuition deadline",
+      "startAt": "2026-08-28 17:00",
+      "location": "",
+      "notes": "Pay balance before end of business day.",
+      "critical": true
+    },
+    {
+      "title": "Read next month planner",
+      "startAt": "2026-08-18 09:00",
+      "location": "",
+      "notes": "Review imported planner summary.",
+      "critical": false
+    }
+  ]
+}

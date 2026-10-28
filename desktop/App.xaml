@@ -1,0 +1,5 @@
+<!-- The resources (palette, icons, control styles) are added in code: see Xp/XpTheme.cs. -->
+<Application x:Class="AICalendar.Desktop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose" />
