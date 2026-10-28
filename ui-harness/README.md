@@ -79,6 +79,6 @@ Things that already bit this project on this PC, in the order to suspect them:
 1. Temp folder: `run.ps1` sets `TEMP` and `TMP` to `build\tmp`. Robolectric
    unpacks native libraries there. If it was started some other way, the default temp path (with
    an apostrophe) is the first suspect.
-2. Path: start it through `C:\ai-calendar`, never through the real folder name with `&` in it.
+2. Path: keep the repository in a folder whose path has no `&` in it.
 3. JDK: Robolectric with API 35 needs JDK 17 or newer. `run.ps1` uses Android Studio's JDK 21.
 4. Offline: a `No cached version` line in `run.log` means a download was blocked.

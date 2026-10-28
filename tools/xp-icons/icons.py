@@ -207,6 +207,20 @@ ICONS = {
         P(circle(12, 7.5, 1.35), fill="#FFFFFF"),
         P(rrect(10.85, 10.2, 2.3, 7.4, 0.5), fill="#FFFFFF"),
     ]),
+    # Kitchen (shopping list, pantry, meal plan): a red enamel stock pot with a steel lid and steam.
+    "Kitchen": icon([
+        P("M7.2 5.8 C6.3 4.8 8.1 3.9 7.2 2.6 M16.8 5.8 C15.9 4.8 17.7 3.9 16.8 2.6", stroke="#FFFFFF", sw=2.6, sa=0.7),
+        P("M7.2 5.8 C6.3 4.8 8.1 3.9 7.2 2.6 M16.8 5.8 C15.9 4.8 17.7 3.9 16.8 2.6", stroke="#6F8DB8", sw=1.3),
+        P(rrect(1.3, 12.3, 3.6, 2.3, 1.1), fill=lin(0, 12.3, 0, 14.6, (0, "#A8A8A8"), (1, "#4A4A4A")), stroke="#2E2E2E", sw=0.8),
+        P(rrect(19.1, 12.3, 3.6, 2.3, 1.1), fill=lin(0, 12.3, 0, 14.6, (0, "#A8A8A8"), (1, "#4A4A4A")), stroke="#2E2E2E", sw=0.8),
+        P("M4 11 H20 V17.6 A2.6 2.6 0 0 1 17.4 20.2 H6.6 A2.6 2.6 0 0 1 4 17.6 Z",
+          fill=lin(0, 11, 0, 20.2, (0, "#FF8A66"), (0.55, "#E8452A"), (1, "#B82410")), stroke="#7E1A0C", sw=1),
+        P("M6 13.2 V17.2", stroke="#FFFFFF", sw=1.2, sa=0.55),
+        P(rrect(3.1, 9.7, 17.8, 2.1, 1.05), fill=lin(0, 9.7, 0, 11.8, (0, "#FFA088"), (1, "#C92A14")), stroke="#7E1A0C", sw=0.9),
+        P("M4.7 9.8 C5.5 7.5 8.4 6.5 12 6.5 C15.6 6.5 18.5 7.5 19.3 9.8 Z",
+          fill=lin(0, 6.5, 0, 9.8, (0, "#F8F9FB"), (1, "#A3ACBA")), stroke="#4A5260", sw=0.9),
+        P(rrect(10.5, 4.8, 3, 2.1, 1), fill=lin(0, 4.8, 0, 6.9, (0, "#6A6A6A"), (1, "#2A2A2A")), stroke="#1A1A1A", sw=0.6),
+    ]),
 }
 
 # ------------------------------------------------------------------ launcher artwork (108 x 108)

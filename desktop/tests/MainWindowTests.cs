@@ -267,6 +267,28 @@ public sealed class MainWindowTests(UiFixture ui)
     });
 
     [Fact]
+    public void TheAppIsShownAsAIPlannerWhileItsFilesKeepTheirName() => ui.Run(() =>
+    {
+        var window = UiFixture.Open(Sample.Store());
+        var about = new AboutWindow([]);
+        try
+        {
+            Assert.Equal("AI Planner", window.Title);
+            Assert.Equal("About AI Planner", about.Title);
+            var assembly = typeof(MainWindow).Assembly;
+            Assert.Equal("AI Planner", assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyProductAttribute), false)
+                .OfType<System.Reflection.AssemblyProductAttribute>().Single().Product);
+            // The exe (and so the process name), and the settings folder, keep the old name on purpose.
+            Assert.Equal("AI Calendar", assembly.GetName().Name);
+        }
+        finally
+        {
+            about.Close();
+            window.Close();
+        }
+    });
+
+    [Fact]
     public void UnpairedAndEmptyOffersToPair() => ui.Run(() =>
     {
         var window = UiFixture.Open(Sample.Store(events: [], paired: false));

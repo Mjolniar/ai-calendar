@@ -118,6 +118,8 @@ public sealed class ThemeTests(UiFixture ui)
             Check(palette, "Xp.GroupText", "Xp.Window", 4.5);
             Check(palette, "Xp.HeaderText", "Xp.Window", 4.5);
             Check(palette, "Xp.ErrorText", "Xp.Face", 4.5);
+            // The On hand chips: Probably out is error-colored text on the window, Have a green edge.
+            Check(palette, "Xp.ErrorText", "Xp.Window", 4.5);
             Check(palette, "Xp.TagText", "Xp.TagFill", 4.5);
             Check(palette, "Xp.HighlightText", "Xp.Highlight", 4.5);
         }
@@ -132,6 +134,7 @@ public sealed class ThemeTests(UiFixture ui)
             Check(palette, "Xp.FieldBorder", "Xp.Window", 2);
             Check(palette, "Xp.CheckBorder", "Xp.Window", 3);
             Check(palette, "Xp.Today", "Xp.Window", 3);
+            Check(palette, "Xp.CheckGreen", "Xp.Window", 3);
             Check(palette, "Xp.MenuBorder", "Xp.Window", 1.5);
         }
     });

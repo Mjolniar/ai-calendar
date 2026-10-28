@@ -11,7 +11,7 @@ import type {
   SeriesUpdateInput,
   TaskPublishInput,
 } from "./types.js";
-import { addDays, countBefore, isLocalDate, isLocalTime, plannedOccurrences, ruleIncludes } from "./recurrence.js";
+import { addDays, countBefore, isLocalDate, isLocalTime, plannedOccurrences, ruleDates, ruleIncludes } from "./recurrence.js";
 
 const NOTIFY_TIMEOUT_MS = 10_000;
 const PUBLISH_CONCURRENCY = 8;
@@ -80,6 +80,49 @@ export class CalendarService {
     return { event, created: true, notified };
   }
 
+  /**
+   * A reminder made on a phone, uploaded under the phone's own id so the phone keeps its alarms and
+   * local state. A retry finds the reminder it made and changes nothing; an id that is in use by
+   * another reminder, or was deleted, is refused rather than overwritten.
+   */
+  async createFromDevice(id: string, input: EventInput & { done?: boolean }): Promise<{
+    event: ReminderEvent;
+    created: boolean;
+    notified: number;
+  } | { conflict: "exists" | "deleted" }> {
+    validateEventFields(input, true);
+    const now = new Date().toISOString();
+    const critical = input.critical ?? false;
+    const domain = resolveInputDomain(input);
+    const event: ReminderEvent = {
+      id,
+      title: input.title.trim(),
+      startAt: new Date(input.startAt).toISOString(),
+      timeZone: input.timeZone,
+      location: input.location?.trim() ?? "",
+      notes: input.notes?.trim() ?? "",
+      critical,
+      reminderOffsetsMinutes: alertOffsets(domain, input.reminderOffsetsMinutes, critical),
+      done: input.done ?? false,
+      domain,
+      category: input.category ?? "automatic",
+      source: "manual",
+      revision: Date.now(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const { before } = await this.store.mutateEvent(id, (current) => current ? null : event);
+    if (before?.deletedAt) return { conflict: "deleted" };
+    if (before) {
+      // A retry: the earlier upload is the answer, and the phone sends any later edit as an update.
+      // An id held by a reminder from anywhere else keeps its owner.
+      return before.source === "manual"
+        ? { event: normalizeStoredEvent(before), created: false, notified: 0 }
+        : { conflict: "exists" };
+    }
+    return { event, created: true, notified: await this.notify(event.revision) };
+  }
+
   async publishTaskReminders(input: TaskPublishInput): Promise<{
     taskKey: string;
     created: number;
@@ -140,8 +183,14 @@ export class CalendarService {
       const current = stored && !stored.deletedAt ? normalizeStoredEvent(stored) : null;
       const critical = incoming.critical ?? false;
       const domain = resolveInputDomain(incoming, current);
-      const routineSchoolMeeting = (incoming.source ?? current?.source ?? "chatgpt") !== "canvas"
-        && isRoutineSchoolMeeting(incoming);
+      const fromCanvas = (incoming.source ?? current?.source ?? "chatgpt") === "canvas";
+      // A routine class meeting is filed when it is first published, never again: reopened by the
+      // user, it stays open on later runs.
+      const routineSchoolMeeting = !current && !fromCanvas && isRoutineSchoolMeeting(incoming);
+      // A done item moved to a later date (next month's bill, a rescheduled appointment) is due
+      // again. Canvas completion stays Canvas's to decide.
+      const movedLater = Boolean(current) && !fromCanvas
+        && Date.parse(new Date(incoming.startAt).toISOString()) > Date.parse(current!.startAt);
       const candidate: ReminderEvent = {
         id,
         title: incoming.title.trim(),
@@ -151,7 +200,7 @@ export class CalendarService {
         notes: incoming.notes?.trim() ?? "",
         critical,
         reminderOffsetsMinutes: alertOffsets(domain, incoming.reminderOffsetsMinutes, critical),
-        done: routineSchoolMeeting || current?.done || false,
+        done: routineSchoolMeeting || (Boolean(current?.done) && !movedLater),
         domain,
         category: incoming.category ?? current?.category ?? "automatic",
         source: incoming.source ?? current?.source ?? "chatgpt",
@@ -181,10 +230,24 @@ export class CalendarService {
     return outcome;
   }
 
-  async update(id: string, input: Partial<EventInput> & { done?: boolean }): Promise<{ event: ReminderEvent; notified: number } | null> {
+  /**
+   * Changes a reminder. With [options.baseRevision] (the revision the caller's copy had), a change
+   * made from an older copy is refused: `conflict` is set and the current reminder is returned, so a
+   * stale device copy never overwrites a newer change from another device or an AI client.
+   */
+  async update(
+    id: string,
+    input: Partial<EventInput> & { done?: boolean },
+    options: { baseRevision?: number } = {},
+  ): Promise<{ event: ReminderEvent; notified: number; conflict?: true } | null> {
     validateEventFields(input, false);
-    const { after } = await this.store.mutateEvent(id, (stored) => {
+    let conflict = false;
+    const { before, after } = await this.store.mutateEvent(id, (stored) => {
       if (!stored || stored.deletedAt) return null;
+      if (options.baseRevision !== undefined && stored.revision !== options.baseRevision) {
+        conflict = true;
+        return null;
+      }
       const current = normalizeStoredEvent(stored);
       const critical = input.critical ?? current.critical;
       const domain = input.domain
@@ -216,6 +279,7 @@ export class CalendarService {
       if (current.seriesId && !current.detached && !sameOccurrenceContent(current, next)) next.detached = true;
       return next;
     });
+    if (conflict && before) return { event: normalizeStoredEvent(before), notified: 0, conflict: true };
     if (!after) return null;
     const notified = await this.notify(after.revision);
     return { event: after, notified };
@@ -239,17 +303,6 @@ export class CalendarService {
     };
   }
 
-  async archiveRoutineSchoolMeetings(): Promise<{ updated: number; notified: number }> {
-    const events = await this.list(true);
-    // Occurrences of a series the user made are intended, whatever their wording.
-    const matches = events.filter((event) => !event.done && event.source !== "canvas" && !event.seriesId && isRoutineSchoolMeeting(event));
-    if (matches.length === 0) return { updated: 0, notified: 0 };
-    const now = new Date().toISOString();
-    const revision = Date.now();
-    const updated = await this.markDone(matches.map((event) => event.id), revision, now);
-    return { updated, notified: updated > 0 ? await this.notify(revision) : 0 };
-  }
-
   /** Transactionally sets done=true, so a concurrent edit is never overwritten with a stale copy. */
   private async markDone(ids: string[], revision: number, now: string): Promise<number> {
     let updated = 0;
@@ -262,30 +315,34 @@ export class CalendarService {
     return updated;
   }
 
+  /**
+   * Deletes a reminder for good. Every delete leaves a tombstone (kept 400 days by a TTL policy):
+   * a task item is not re-published, an occurrence is not re-created by an expansion working from
+   * an older copy of its series, and a phone retrying an upload is told the reminder was deleted.
+   */
   async delete(id: string): Promise<{ deleted: boolean; notified: number }> {
     const existing = await this.store.getEvent(id);
     if (!existing || existing.deletedAt) return { deleted: false, notified: 0 };
-    let deleted: boolean;
     if (existing.seriesId && existing.occurrenceDate) {
-      // Remember the date first, so the next expansion cannot bring the occurrence back.
+      // Also remember the date in the series, so it stays skipped if the series is changed.
       const date = existing.occurrenceDate;
       const now = this.clock();
       await this.store.mutateSeries(existing.seriesId, (series) => (!series || series.skippedDates.includes(date))
         ? null
         : { ...series, skippedDates: [...series.skippedDates, date].sort(), revision: now, updatedAt: new Date(now).toISOString() });
-      deleted = await this.store.deleteEvent(id);
-    } else if (existing.sourceTaskKey && existing.sourceItemKey) {
-      // Task items are re-published by stable key; keep a tombstone so deletion is durable.
-      const revision = Date.now();
-      const deletedAt = new Date(revision).toISOString();
-      const { after } = await this.store.mutateEvent(id, (stored) => (!stored || stored.deletedAt)
-        ? null
-        : { ...stored, done: true, revision, updatedAt: deletedAt, deletedAt });
-      deleted = after !== null;
-    } else {
-      deleted = await this.store.deleteEvent(id);
     }
+    const deleted = await this.tombstone(id);
     return { deleted, notified: deleted ? await this.notify(Date.now()) : 0 };
+  }
+
+  /** Marks a reminder deleted, unless [keep] says the stored copy must stay. Atomic. */
+  private async tombstone(id: string, keep?: (current: ReminderEvent) => boolean): Promise<boolean> {
+    const revision = Date.now();
+    const deletedAt = new Date(revision).toISOString();
+    const { after } = await this.store.mutateEvent(id, (stored) => (!stored || stored.deletedAt || keep?.(stored))
+      ? null
+      : tombstoneOf(stored, revision, deletedAt));
+    return after !== null;
   }
 
   async listSeries(): Promise<ReminderSeries[]> {
@@ -359,49 +416,53 @@ export class CalendarService {
     const fields = seriesFields(old, input);
 
     if (!input.from || input.from <= firstDateOf(old.rule)) {
-      const series: ReminderSeries = { ...old, ...fields, rule: mergeRule(old.rule, input.rule), revision: now, updatedAt: nowIso };
-      await this.store.mutateSeries(id, (current) => current && !current.deletedAt ? series : null);
-      const expanded = await this.expandSeries(series, await this.store.listEvents(true));
-      return { series, occurrences: expanded.occurrences, notified: await this.notify(now) };
+      // Applied to the stored copy inside the transaction, so a concurrent change (a skipped date,
+      // another edit) is kept rather than overwritten with the copy read above.
+      const { after } = await this.store.mutateSeries(id, (current) => current && !current.deletedAt
+        ? { ...current, ...seriesFields(current, input), rule: mergeRule(current.rule, input.rule), revision: now, updatedAt: nowIso }
+        : null);
+      if (!after) return null;
+      const expanded = await this.expandSeries(after, await this.store.listEvents(true));
+      return { series: after, occurrences: expanded.occurrences, notified: await this.notify(now) };
     }
 
     const from = input.from;
-    const newId = input.idempotencyKey ? seriesIdFor(input.idempotencyKey) : randomUUID();
-    if (input.idempotencyKey) {
-      // A retried split must not end the new part with the old part's shortened rule.
-      const existing = await this.getSeries(newId);
-      if (existing) return { series: existing, previous: old, occurrences: await this.occurrencesOf(newId), notified: 0 };
-    }
+    // Without a key, a retry of the same change must still land on the same new series.
+    const newId = seriesIdFor(input.idempotencyKey ?? `split\0${id}\0${from}\0${stableJson({ ...input, idempotencyKey: undefined })}`);
     const dayBefore = addDays(from, -1);
-    const ended: ReminderSeries = {
-      ...old,
-      rule: { ...old.rule, until: old.rule.until && old.rule.until < dayBefore ? old.rule.until : dayBefore },
-      revision: now,
-      updatedAt: nowIso,
-    };
-    const rule = mergeRule(old.rule, input.rule);
-    if (input.rule?.startDate === undefined) {
-      // Same anchor: week parity, the day of the month and the count carry over unchanged.
-      rule.notBefore = old.rule.notBefore && old.rule.notBefore > from ? old.rule.notBefore : from;
-    } else {
-      if (rule.startDate < from) rule.notBefore = from;
-      else delete rule.notBefore;
-      if (old.rule.count !== undefined && input.rule.count === undefined) {
-        const remaining = old.rule.count - countBefore(old.rule, from);
-        if (remaining < 1) {
-          // Nothing of the series is left from that date: ending it is the whole change.
-          await this.store.mutateSeries(id, (current) => current && !current.deletedAt ? ended : null);
-          await this.expandSeries(ended, await this.store.listEvents(true));
-          return { series: ended, previous: ended, occurrences: [], notified: await this.notify(now) };
-        }
-        rule.count = remaining;
-      }
+    const endOld = (current: ReminderSeries | null): ReminderSeries | null => current && !current.deletedAt
+      ? { ...current, rule: { ...current.rule, until: current.rule.until && current.rule.until < dayBefore ? current.rule.until : dayBefore }, revision: now, updatedAt: nowIso }
+      : null;
+
+    const existing = await this.getSeries(newId);
+    if (existing) {
+      // A retry: the new part exists. Make sure the old part ends (the first attempt may have
+      // stopped between the two writes), then answer as before.
+      const { after: ended } = await this.store.mutateSeries(id, endOld);
+      const events = await this.store.listEvents(true);
+      if (ended) await this.expandSeries(ended, events);
+      return { series: existing, previous: ended ?? old, occurrences: await this.occurrencesOf(newId), notified: 0 };
     }
+
+    if (!firstRuleDateFrom(old.rule, from)) {
+      throw new InputError(`Nothing of this series is left from ${from}: that date is after this series ends`);
+    }
+    const rule = mergeRule(old.rule, input.rule);
+    rule.notBefore = rule.startDate < from ? from : undefined;
+    if (rule.notBefore === undefined) delete rule.notBefore;
+    if (old.rule.count !== undefined && input.rule?.count === undefined) {
+      // The count runs from the anchor, and the dates before `from` are hidden. Keep the number of
+      // occurrences still to come under the old pattern, whatever the new pattern or anchor.
+      const remaining = old.rule.count - countBefore(old.rule, from);
+      const { count: _count, notBefore: _notBefore, ...uncounted } = rule;
+      rule.count = remaining + countBefore(uncounted, from);
+    }
+    validateRule(rule);
     const { idempotencyKey: _oldKey, ...rest } = old;
     const events = await this.store.listEvents(true);
-    // A date the old series already shows as its own edited occurrence must not appear twice.
+    // A date the old series already shows as its own edited or done occurrence must not appear twice.
     const keptDates = events
-      .filter((event) => event.seriesId === id && event.detached && !event.deletedAt && (event.occurrenceDate ?? "") >= from)
+      .filter((event) => event.seriesId === id && (event.detached || event.done) && !event.deletedAt && (event.occurrenceDate ?? "") >= from)
       .map((event) => event.occurrenceDate!);
     const series: ReminderSeries = {
       ...rest,
@@ -414,11 +475,13 @@ export class CalendarService {
       updatedAt: nowIso,
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     };
-    await this.store.mutateSeries(id, (current) => current && !current.deletedAt ? ended : null);
-    await this.store.mutateSeries(newId, () => series);
-    await this.expandSeries(ended, events);
+    // The new part first: if the call stops between the writes, a retry finds it and ends the old
+    // part, and no date is ever left without its series.
+    await this.store.mutateSeries(newId, (current) => current ?? series);
+    const { after: ended } = await this.store.mutateSeries(id, endOld);
+    if (ended) await this.expandSeries(ended, events);
     const expanded = await this.expandSeries(series, events);
-    return { series, previous: ended, occurrences: expanded.occurrences, notified: await this.notify(now) };
+    return { series, previous: ended ?? old, occurrences: expanded.occurrences, notified: await this.notify(now) };
   }
 
   /**
@@ -448,8 +511,9 @@ export class CalendarService {
       doomed = open.filter((event) => Date.parse(event.startAt) >= now);
     }
     let removed = 0;
+    // Tombstones, checked again inside the transaction: an occurrence completed meanwhile stays.
     await forEachConcurrent(doomed, PUBLISH_CONCURRENCY, async (event) => {
-      if (await this.store.deleteEvent(event.id)) removed += 1;
+      if (await this.tombstone(event.id, (current) => current.done)) removed += 1;
     });
     return { deleted: true, removed, notified: await this.notify(now) };
   }
@@ -478,12 +542,15 @@ export class CalendarService {
    * Writes the series' planned occurrences and removes future ones the rule no longer produces.
    * Occurrences that are done, detached ("this one" edits) or past are never touched.
    */
-  private async expandSeries(series: ReminderSeries, allEvents: ReminderEvent[]): Promise<{
+  private async expandSeries(given: ReminderSeries, allEvents: ReminderEvent[]): Promise<{
     created: number;
     updated: number;
     removed: number;
     occurrences: ReminderEvent[];
   }> {
+    // The caller's copy may be older than the stored one (the scheduled run reads every series at
+    // its start): a series deleted or changed since must not have its old occurrences written back.
+    const series = (await this.store.getSeries(given.id)) ?? given;
     const now = this.clock();
     const nowIso = new Date(now).toISOString();
     const planned = series.deletedAt ? [] : plannedOccurrences(series.rule, series.timeZone, series.skippedDates, now);
@@ -519,8 +586,11 @@ export class CalendarService {
         || series.skippedDates.includes(event.occurrenceDate)
         || !ruleIncludes(series.rule, event.occurrenceDate)));
     let removed = 0;
+    // The rule no longer makes these dates: a plain delete (no tombstone), so a later change back
+    // to the old pattern can bring them back. Checked again inside the transaction, so one completed
+    // or edited on its own meanwhile stays.
     await forEachConcurrent(stale, PUBLISH_CONCURRENCY, async (event) => {
-      if (await this.store.deleteEvent(event.id)) removed += 1;
+      if (await this.store.deleteEventUnless(event.id, (current) => current.done || Boolean(current.detached) || Boolean(current.deletedAt))) removed += 1;
     });
 
     occurrences.sort((a, b) => a.startAt.localeCompare(b.startAt));
@@ -546,6 +616,36 @@ export class CalendarService {
   }
 }
 
+/**
+ * What is kept of a deleted reminder: only what stops it coming back (its id, task item key, series
+ * date, idempotency key). The title, notes, place and alerts are gone, as "permanently delete" says.
+ */
+function tombstoneOf(stored: ReminderEvent, revision: number, deletedAt: string): ReminderEvent {
+  return {
+    id: stored.id,
+    title: "",
+    startAt: stored.startAt,
+    timeZone: stored.timeZone,
+    location: "",
+    notes: "",
+    critical: false,
+    reminderOffsetsMinutes: [],
+    done: true,
+    domain: stored.domain ?? "life",
+    category: stored.category ?? "automatic",
+    source: stored.source ?? "chatgpt",
+    revision,
+    createdAt: stored.createdAt,
+    updatedAt: deletedAt,
+    deletedAt,
+    ...(stored.sourceTaskKey ? { sourceTaskKey: stored.sourceTaskKey } : {}),
+    ...(stored.sourceItemKey ? { sourceItemKey: stored.sourceItemKey } : {}),
+    ...(stored.seriesId ? { seriesId: stored.seriesId } : {}),
+    ...(stored.occurrenceDate ? { occurrenceDate: stored.occurrenceDate } : {}),
+    ...(stored.idempotencyKey ? { idempotencyKey: stored.idempotencyKey } : {}),
+  };
+}
+
 function seriesIdFor(key: string): string {
   return uuidFromSeed(`series\0${key}`);
 }
@@ -553,6 +653,26 @@ function seriesIdFor(key: string): string {
 /** Deterministic, so expanding again never duplicates an occurrence. */
 function occurrenceId(seriesId: string, date: string): string {
   return uuidFromSeed(`occurrence\0${seriesId}\0${date}`);
+}
+
+/** The first date on or after [from] that the rule still produces (count, until and notBefore apply). */
+function firstRuleDateFrom(rule: SeriesRule, from: string): string | null {
+  const floor = rule.notBefore && rule.notBefore > from ? rule.notBefore : from;
+  for (const date of ruleDates(rule)) {
+    if (date >= floor) return date;
+  }
+  return null;
+}
+
+/** JSON with sorted keys, so the same input always gives the same text. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort()
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 function firstDateOf(rule: SeriesRule): string {
@@ -817,7 +937,10 @@ function normalizeOptionalDate(value: string | undefined): string | undefined {
 function isRoutineSchoolMeeting(input: Pick<ReminderEvent, "title" | "location" | "notes" | "domain" | "category"> | EventInput): boolean {
   if (normalizeDomain(input.domain, input.category) !== "school") return false;
   const text = `${input.title} ${input.location ?? ""} ${input.notes ?? ""}`.toLowerCase();
-  const actionable = /\b(assignment|deadline|due|exam|final|homework|lab|midterm|presentation|project|quiz|registration|rescheduled|test)\b/.test(text);
+  const actionable = /\b(assignment|deadline|due|exam|final|homework|lab|midterm|presentation|project|quiz|registration|rescheduled|test)\b/.test(text)
+    // A note about a change to the routine is news, not the routine.
+    || /\b(cancell?ed|cancel|moved?|room|instead|make-?up|no class)\b/.test(text)
+    || /\bno\b[^.]{0,40}\b(class|lecture)\b/.test(text);
   const meeting = /\b(class|class meeting|lecture|lesson meeting|recurring session)\b/.test(text);
   const recurring = /\b(every|each|weekly|regular|recurring|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|m\/w|t\/th|tu\/th|tue\/thu)\b/.test(text);
   return meeting && recurring && !actionable;

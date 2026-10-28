@@ -73,6 +73,8 @@ const LIST_FIELDS = [
 export class OutlookService {
   private cachedAccess: { token: string; expiresAt: number; scope: string } | null = null;
   private deletedItemsId: string | null = null;
+  private rootFolderId: string | null = null;
+  private readonly parentCache = new Map<string, { parent: string | undefined; until: number }>();
   private refreshing: Promise<string> | null = null;
 
   constructor(
@@ -271,10 +273,33 @@ export class OutlookService {
     return encodeURIComponent(folder);
   }
 
+  /**
+   * Refuses Deleted Items and anything inside it, at any depth: mail moved there is purged when
+   * Deleted Items is emptied, so it would break "never deletes". Walks the folder's parents.
+   */
   private async assertNotDeletedItems(folderId: string): Promise<void> {
-    if ((FOLDERS as readonly string[]).includes(folderId)) return;
+    if ((FOLDERS as readonly string[]).includes(folderId) || folderId === "msgfolderroot") return;
     this.deletedItemsId ??= (await this.graph<{ id: string }>("GET", "/me/mailFolders/deleteditems?$select=id")).id;
-    if (folderId === this.deletedItemsId) throw new OutlookError("Deleted Items is never a destination", "invalid");
+    this.rootFolderId ??= (await this.graph<{ id: string }>("GET", "/me/mailFolders/msgfolderroot?$select=id")).id;
+    let id: string | undefined = folderId;
+    for (let depth = 0; id && depth < 16; depth += 1) {
+      if (id === this.deletedItemsId) throw new OutlookError("Deleted Items, and folders inside it, are never a destination", "invalid");
+      if (id === this.rootFolderId) return;
+      id = await this.parentOf(id);
+    }
+    // Deeper than any real mailbox, or a folder without a parent: refuse rather than guess.
+    if (id) throw new OutlookError("That folder is nested too deeply to check", "invalid");
+  }
+
+  /** A folder's parent, cached for five minutes (a folder can be moved, so not for longer). */
+  private async parentOf(folderId: string): Promise<string | undefined> {
+    const cached = this.parentCache.get(folderId);
+    if (cached && cached.until > Date.now()) return cached.parent;
+    const folder = await this.graph<GraphFolder>("GET", `/me/mailFolders/${encodeURIComponent(folderId)}?$select=id,parentFolderId`);
+    const parent = folder.parentFolderId && folder.parentFolderId !== folderId ? folder.parentFolderId : undefined;
+    if (this.parentCache.size > 500) this.parentCache.clear();
+    this.parentCache.set(folderId, { parent, until: Date.now() + 5 * 60 * 1000 });
+    return parent;
   }
 
   async listFolders(parent = "inbox") {
@@ -295,6 +320,8 @@ export class OutlookService {
   }
 
   async createFolder(displayName: string, parent = "inbox") {
+    this.folderRef(parent);
+    await this.assertNotDeletedItems(parent);
     const name = displayName.trim();
     const find = async () => (await this.listFolders(parent)).folders.find((f) => f.displayName.toLowerCase() === name.toLowerCase());
     const existing = await find();
@@ -501,8 +528,14 @@ export class OutlookService {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
       return { unsubscribed: false, reason: "List-Unsubscribe mailto address is malformed" };
     }
-    const subject = target.searchParams.get("subject") || "unsubscribe";
-    const body = target.searchParams.get("body") || "unsubscribe";
+    // The sender wrote this header: send only an unsubscribe request, never their text. A list's
+    // own subject is kept when it is a token or says unsubscribe, which some lists require.
+    const requested = (target.searchParams.get("subject") ?? "").trim();
+    const subject = /^[\w.:@#+=-]{1,80}$/.test(requested)
+      || (/\b(unsubscribe|unsub|remove|opt[\s-]?out|leave)\b/i.test(requested) && requested.length <= 80 && !/[\r\n]|https?:|www\./i.test(requested))
+      ? requested
+      : "unsubscribe";
+    const body = "unsubscribe";
     await this.graph("POST", "/me/sendMail", {
       message: { subject, body: { contentType: "Text", content: body }, toRecipients: [{ emailAddress: { address } }] },
       saveToSentItems: true,

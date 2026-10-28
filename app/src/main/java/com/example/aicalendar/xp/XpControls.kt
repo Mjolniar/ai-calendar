@@ -67,6 +67,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -365,21 +366,65 @@ fun XpTextField(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         cursorBrush = SolidColor(XpColors.text),
-        decorationBox = { innerTextField ->
-            Box(
-                Modifier
-                    .background(XpColors.window)
-                    .border(1.dp, XpColors.fieldBorder)
-                    .padding(horizontal = 8.dp, vertical = 9.dp),
-                contentAlignment = if (singleLine) Alignment.CenterStart else Alignment.TopStart,
-            ) {
-                if (value.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(placeholder, style = textStyle, color = XpColors.textDisabled, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                innerTextField()
-            }
-        },
+        decorationBox = { innerTextField -> XpFieldFrame(value.isEmpty(), placeholder, textStyle, singleLine, innerTextField) },
     )
+}
+
+/**
+ * The same edit box for a [TextFieldValue], for a caller that sets the text and the cursor
+ * (a prefilled box with the cursor at the end).
+ */
+@Composable
+fun XpTextField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    textStyle: TextStyle = XpType.Body,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    focusRequester: FocusRequester? = null,
+) {
+    val inkedStyle = if (textStyle.color.isSpecified) textStyle else textStyle.copy(color = XpColors.text)
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = if (focusRequester != null) modifier.focusRequester(focusRequester) else modifier,
+        textStyle = inkedStyle,
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = maxLines,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        cursorBrush = SolidColor(XpColors.text),
+        decorationBox = { innerTextField -> XpFieldFrame(value.text.isEmpty(), placeholder, textStyle, singleLine, innerTextField) },
+    )
+}
+
+/** White field with the pale-blue XP border, and the grey placeholder while it is empty. */
+@Composable
+private fun XpFieldFrame(
+    empty: Boolean,
+    placeholder: String,
+    textStyle: TextStyle,
+    singleLine: Boolean,
+    innerTextField: @Composable () -> Unit,
+) {
+    Box(
+        Modifier
+            .background(XpColors.window)
+            .border(1.dp, XpColors.fieldBorder)
+            .padding(horizontal = 8.dp, vertical = 9.dp),
+        contentAlignment = if (singleLine) Alignment.CenterStart else Alignment.TopStart,
+    ) {
+        if (empty && placeholder.isNotEmpty()) {
+            Text(placeholder, style = textStyle, color = XpColors.textDisabled, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        innerTextField()
+    }
 }
 
 /** Drop-down list field. Give it a width (fillMaxWidth / weight); the arrow button sits at the end. */

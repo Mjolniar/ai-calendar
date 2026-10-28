@@ -99,6 +99,7 @@ object RemoteEventParser {
             seriesId = json.cleanString("seriesId").trim(),
             occurrenceDate = json.cleanString("occurrenceDate").trim(),
             detached = json.optBoolean("detached", false),
+            revision = json.optLong("revision", 0L),
         )
     }
 }

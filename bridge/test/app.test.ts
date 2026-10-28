@@ -169,7 +169,11 @@ describe("device API", () => {
       .delete(`/v1/events/${id}`)
       .set("Authorization", authorization)
       .expect(200);
-    expect(await store.getEvent(id)).toBeNull();
+    // Deleted for good: only a content-free tombstone remains, and sync no longer lists it.
+    expect(await store.getEvent(id)).toMatchObject({ title: "", notes: "", location: "" });
+    expect((await store.getEvent(id))?.deletedAt).toBeTruthy();
+    const sync = await request(app).get("/v1/sync").set("Authorization", authorization).expect(200);
+    expect(sync.body.events.map((event: { id: string }) => event.id)).not.toContain(id);
   });
 });
 

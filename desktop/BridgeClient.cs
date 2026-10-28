@@ -82,22 +82,14 @@ public class BridgeClient
         return envelope;
     }
 
+    /// <summary>
+    /// Marks a reminder done or not done, and nothing else. The PC's copy can be up to a minute old,
+    /// so it never sends the rest of the reminder: that would undo a newer change made elsewhere.
+    /// </summary>
     public virtual async Task SetDoneAsync(CalendarEvent item, bool done, CancellationToken cancellationToken = default)
     {
-        using var request = Request(HttpMethod.Patch, $"/v1/events/{Uri.EscapeDataString(item.Id)}");
-        request.Content = JsonContent.Create(new
-        {
-            title = item.Title,
-            startAt = item.StartAt,
-            timeZone = item.TimeZone,
-            location = item.Location,
-            notes = item.Notes,
-            critical = item.Critical,
-            done,
-            domain = item.ResolvedDomain,
-            category = item.Category,
-            reminderOffsetsMinutes = item.ReminderOffsetsMinutes,
-        });
+        using var request = Request(HttpMethod.Post, $"/v1/events/{Uri.EscapeDataString(item.Id)}/{(done ? "done" : "undone")}");
+        request.Content = JsonContent.Create(new { });
         using var response = await Http.SendAsync(request, cancellationToken);
         await EnsureSuccess(response, cancellationToken);
     }
@@ -119,6 +111,90 @@ public class BridgeClient
         using var request = Request(HttpMethod.Delete, $"/v1/series/{Uri.EscapeDataString(seriesId)}{query}");
         using var response = await Http.SendAsync(request, cancellationToken);
         await EnsureSuccess(response, cancellationToken);
+    }
+
+    // ------------------------------------------------------------ kitchen (bridge 0.9.0)
+
+    /// <summary>The shopping list, pantry, this week's and next week's meal plan and the dinner notes.</summary>
+    public virtual async Task<KitchenSnapshot> GetKitchenAsync(CancellationToken cancellationToken = default)
+    {
+        using var json = await SendKitchenAsync(HttpMethod.Get, "/v1/kitchen", null, cancellationToken);
+        return KitchenJson.ReadSnapshot(json.Document.RootElement);
+    }
+
+    /// <summary>Adds a list item. An open item of the same name comes back instead (Created false).</summary>
+    public virtual async Task<ShoppingItemResult> AddKitchenItemAsync(string name, string? qty = null, string? note = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var json = await SendKitchenAsync(HttpMethod.Post, "/v1/kitchen/items", KitchenJson.AddItemBody(name, qty, note), cancellationToken);
+        return KitchenJson.ReadItemResult(json.Document.RootElement, json.Status == HttpStatusCode.Created);
+    }
+
+    /// <summary>Changes the fields given; status is need or got.</summary>
+    public virtual async Task<ShoppingItemResult> UpdateKitchenItemAsync(string id, ShoppingItemChange change,
+        CancellationToken cancellationToken = default)
+    {
+        using var json = await SendKitchenAsync(HttpMethod.Patch, $"/v1/kitchen/items/{KitchenId(id)}", KitchenJson.Body(change), cancellationToken);
+        return KitchenJson.ReadItemResult(json.Document.RootElement, createdByStatus: false);
+    }
+
+    /// <summary>Removes a list item. Returns the new revision.</summary>
+    public virtual async Task<long> DeleteKitchenItemAsync(string id, CancellationToken cancellationToken = default)
+    {
+        using var json = await SendKitchenAsync(HttpMethod.Delete, $"/v1/kitchen/items/{KitchenId(id)}", null, cancellationToken);
+        return KitchenJson.Revision(json.Document.RootElement);
+    }
+
+    /// <summary>
+    /// Corrects Claude's pantry estimate (bridge 0.10.0). "out" and "have" name the item and apply at
+    /// once ("out" also lists it); a "note" carries text, optionally about an item, and waits for Claude.
+    /// (The older pantry routes stay on the server for older apps; this app no longer uses them.)
+    /// </summary>
+    public virtual async Task<CorrectionResult> AddCorrectionAsync(string kind, string? text = null, string? itemId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var body = KitchenJson.CorrectionBody(kind, text, itemId is null ? null : KitchenId(itemId));
+        using var json = await SendKitchenAsync(HttpMethod.Post, "/v1/kitchen/corrections", body, cancellationToken);
+        return KitchenJson.ReadCorrectionResult(json.Document.RootElement);
+    }
+
+    /// <summary>Withdraws an open note. Returns the new revision.</summary>
+    public virtual async Task<long> WithdrawCorrectionAsync(string id, CancellationToken cancellationToken = default)
+    {
+        using var json = await SendKitchenAsync(HttpMethod.Delete, $"/v1/kitchen/corrections/{KitchenId(id)}", null, cancellationToken);
+        return KitchenJson.Revision(json.Document.RootElement);
+    }
+
+    /// <summary>Sets how the dinner of <paramref name="date"/> (YYYY-MM-DD) went; only the fields given change.</summary>
+    public virtual async Task<DinnerNoteResult> PutDinnerNoteAsync(string date, DinnerNoteChange change,
+        CancellationToken cancellationToken = default)
+    {
+        if (!KitchenJson.IsValidDate(date)) throw new ArgumentException("A dinner date is YYYY-MM-DD.", nameof(date));
+        using var json = await SendKitchenAsync(HttpMethod.Put, $"/v1/kitchen/notes/{date}", KitchenJson.Body(change), cancellationToken);
+        return KitchenJson.ReadNoteResult(json.Document.RootElement, date);
+    }
+
+    /// <summary>Kitchen ids are letters, digits, _ and -; anything else would never reach the right record.</summary>
+    internal static string KitchenId(string id) =>
+        KitchenJson.IsValidId(id) ? id : throw new ArgumentException("Not a kitchen id.", nameof(id));
+
+    private sealed class KitchenAnswer(JsonDocument document, HttpStatusCode status) : IDisposable
+    {
+        public JsonDocument Document { get; } = document;
+        public HttpStatusCode Status { get; } = status;
+        public void Dispose() => Document.Dispose();
+    }
+
+    private async Task<KitchenAnswer> SendKitchenAsync(HttpMethod method, string path, Dictionary<string, string>? body,
+        CancellationToken cancellationToken)
+    {
+        using var request = Request(method, path);
+        if (body is not null) request.Content = JsonContent.Create(body);
+        using var response = await Http.SendAsync(request, cancellationToken);
+        await EnsureSuccess(response, cancellationToken);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        try { return new KitchenAnswer(JsonDocument.Parse(text), response.StatusCode); }
+        catch (JsonException) { throw new FormatException("The calendar service sent an answer that could not be read."); }
     }
 
     private HttpRequestMessage Request(HttpMethod method, string path)

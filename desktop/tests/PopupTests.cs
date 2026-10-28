@@ -82,7 +82,7 @@ public sealed class PopupTests(UiFixture ui)
         try
         {
             var menu = window.BuildTrayMenu();
-            Assert.Equal(["Open AI Calendar", "Sync Now", "Exit"], menu.Items.OfType<MenuItem>().Select(item => (string)item.Header));
+            Assert.Equal(["Open AI Planner", "Sync Now", "Exit"], menu.Items.OfType<MenuItem>().Select(item => (string)item.Header));
             // Laid out on its own, never opened: its place would be at the mouse pointer.
             menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             menu.Arrange(new Rect(menu.DesiredSize));

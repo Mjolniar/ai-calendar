@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeviceNotifier } from "../src/notifier.js";
+import { CanvasSyncService } from "../src/canvas.js";
 import { CalendarService } from "../src/service.js";
 import { MemoryCalendarStore } from "../src/store.js";
 
@@ -122,6 +123,57 @@ describe("task reminder publishing", () => {
     expect(result.reminders[1].event.done).toBe(false);
     expect(await service.list()).toHaveLength(1);
     expect((await service.list())[0].title).toContain("final presentation");
+  });
+});
+
+describe("republishing and the routine class rule", () => {
+  const bill = { itemKey: "rent", title: "Rent due", startAt: "2026-11-01T09:00:00-06:00", timeZone: "America/Denver" };
+
+  it("a done item republished for a later date opens again, so it alerts", async () => {
+    const service = new CalendarService(new MemoryCalendarStore(), new CountingNotifier());
+    const first = await service.publishTaskReminders({ taskKey: "planner", reminders: [bill] });
+    await service.update(first.reminders[0].event.id, { done: true });
+    const next = await service.publishTaskReminders({ taskKey: "planner", reminders: [{ ...bill, startAt: "2026-12-01T09:00:00-07:00" }] });
+    expect(next.reminders[0].event.done).toBe(false);
+  });
+
+  it("a done item republished for the same date stays done", async () => {
+    const service = new CalendarService(new MemoryCalendarStore(), new CountingNotifier());
+    const first = await service.publishTaskReminders({ taskKey: "planner", reminders: [bill] });
+    await service.update(first.reminders[0].event.id, { done: true });
+    const again = await service.publishTaskReminders({ taskKey: "planner", reminders: [{ ...bill, notes: "Paid by check" }] });
+    expect(again.reminders[0].event.done).toBe(true);
+  });
+
+  it("a routine class meeting is filed only when first published; reopened, it stays open", async () => {
+    const service = new CalendarService(new MemoryCalendarStore(), new CountingNotifier());
+    const meeting = { itemKey: "eth-tuth", title: "ETH 110 class", startAt: "2026-11-03T15:00:00-07:00", timeZone: "America/Denver", domain: "school" as const, notes: "Regular Tue/Thu class meeting" };
+    const first = await service.publishTaskReminders({ taskKey: "school", reminders: [meeting] });
+    expect(first.reminders[0].event.done).toBe(true);
+    await service.update(first.reminders[0].event.id, { done: false });
+    const again = await service.publishTaskReminders({ taskKey: "school", reminders: [{ ...meeting, notes: `${meeting.notes}.` }] });
+    expect(again.reminders[0].event.done).toBe(false);
+  });
+
+  it.each([
+    "No ETH 110 class Tuesday",
+    "Lecture moved to Tuesday",
+    "Class cancelled Thursday",
+    "Tuesday class meets in room 204 this week",
+  ])("a note about a change is not a routine meeting: %s", async (title) => {
+    const service = new CalendarService(new MemoryCalendarStore(), new CountingNotifier());
+    const published = await service.publishTaskReminders({ taskKey: "school", reminders: [{ itemKey: title, title, startAt: "2026-11-03T15:00:00-07:00", timeZone: "America/Denver", domain: "school" }] });
+    expect(published.reminders[0].event.done).toBe(false);
+  });
+
+  it("a Canvas sync never completes a school reminder made on a phone or by the planner", async () => {
+    const store = new MemoryCalendarStore();
+    const service = new CalendarService(store, new CountingNotifier());
+    await service.createFromDevice("3f2b7c1e-8a4d-4f6b-9c2e-1d5a7b9c0e12", { title: "Biology lecture every Tuesday", startAt: "2026-11-03T15:00:00Z", timeZone: "America/Denver", domain: "school" });
+    const empty: typeof fetch = async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+    const result = await new CanvasSyncService(service, empty).sync({ baseUrl: "https://school.example.test", accessToken: "t" }, new Date("2026-10-26T12:00:00Z"));
+    expect(result.routineMeetingsArchived).toBe(0);
+    expect((await service.list(false)).map((event) => event.title)).toContain("Biology lecture every Tuesday");
   });
 });
 

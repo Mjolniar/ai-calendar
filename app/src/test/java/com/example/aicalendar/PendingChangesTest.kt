@@ -68,6 +68,39 @@ class PendingChangesTest {
     }
 
     @Test
+    fun notDoneIsQueuedOnItsOwnAndTheLatestStateWins() {
+        assertEquals(PendingOp.MARK_UNDONE, PendingChanges.coalesce(change(PendingOp.MARK_DONE, 1), change(PendingOp.MARK_UNDONE, 2)).op)
+        assertEquals(PendingOp.MARK_DONE, PendingChanges.coalesce(change(PendingOp.MARK_UNDONE, 1), change(PendingOp.MARK_DONE, 2)).op)
+        // Not done on top of a queued edit keeps the edit, reopened.
+        val merged = PendingChanges.coalesce(change(PendingOp.UPDATE, 1, remote.copy(done = true, title = "Edited")), change(PendingOp.MARK_UNDONE, 2))
+        assertEquals(PendingOp.UPDATE, merged.op)
+        assertEquals(false, merged.event?.done)
+        assertEquals("Edited", merged.event?.title)
+        val overlaid = PendingChanges.overlay(listOf(remote.copy(done = true)), mapOf("e1" to change(PendingOp.MARK_UNDONE, 3)))
+        assertEquals(false, overlaid.single().done)
+    }
+
+    @Test
+    fun theServerRevisionIsKeptSoEditsCanSayWhichCopyTheyCameFrom() {
+        val parsed = RemoteEventParser.parseEvent(org.json.JSONObject("""{"id":"e9","title":"Dentist","startAt":"2026-11-05T16:00:00Z","revision":1791489160148}"""))
+        assertEquals(1_791_489_160_148L, parsed.revision)
+        assertEquals(parsed, PlannerEvent.fromJson(parsed.toJson()))
+        assertEquals(0L, PlannerEvent.fromJson(org.json.JSONObject("""{"id":"x","title":"Old copy","startAtMillis":5}""")).revision)
+    }
+
+    @Test
+    fun anUploadCarriesNoCopyAndLeavesTheSnapshotAlone() {
+        val upload = PendingChange("local-1", PendingOp.CREATE, null, 3)
+        assertEquals(upload, PendingChange.fromJson(upload.toJson()))
+        assertEquals(listOf(remote), PendingChanges.overlay(listOf(remote), mapOf("local-1" to upload, "e1" to upload.copy(eventId = "e1"))))
+        // An upload then an edit of the uploaded reminder: the edit is what remains to send.
+        val edited = remote.copy(title = "Edited")
+        val merged = PendingChanges.coalesce(upload, change(PendingOp.UPDATE, 4, edited))
+        assertEquals(PendingOp.UPDATE, merged.op)
+        assertEquals("Edited", merged.event?.title)
+    }
+
+    @Test
     fun seriesChangesRoundTripUnderTheirOwnKey() {
         val created = PendingChange(PendingChange.seriesKey("k1"), PendingOp.SERIES_CREATE, null, 4, payload = """{"title":"Trash"}""")
         assertEquals("series:k1", created.eventId)

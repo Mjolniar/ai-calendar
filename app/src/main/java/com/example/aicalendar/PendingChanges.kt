@@ -4,7 +4,15 @@ import android.content.Context
 import org.json.JSONObject
 
 enum class PendingOp {
+    /**
+     * Upload a reminder made on this phone (`POST /v1/events`). The entry carries no copy: the
+     * reminder is read from the local store when it is sent, so edits made before then go with it
+     * and a reminder deleted before then is simply not sent.
+     */
+    CREATE,
     MARK_DONE,
+    /** POST /v1/events/:id/undone: reopen without sending the rest of the reminder. */
+    MARK_UNDONE,
     UPDATE,
     DELETE,
     /** POST /v1/series with [PendingChange.payload]. */
@@ -73,9 +81,9 @@ object PendingChanges {
         incoming.op == PendingOp.DELETE -> incoming
         existing.op == PendingOp.DELETE -> existing.copy(seq = incoming.seq)
         incoming.op == PendingOp.UPDATE -> incoming
-        // MARK_DONE on top of a queued full update: keep the update, with done = true.
+        // Done or not done on top of a queued full update: keep the update, with that state.
         existing.op == PendingOp.UPDATE -> existing.copy(
-            event = existing.event?.copy(done = true),
+            event = existing.event?.copy(done = incoming.op == PendingOp.MARK_DONE),
             seq = incoming.seq,
         )
         else -> incoming
@@ -95,6 +103,7 @@ object PendingChanges {
             when (change.op) {
                 PendingOp.DELETE -> null
                 PendingOp.MARK_DONE -> event.copy(done = true)
+                PendingOp.MARK_UNDONE -> event.copy(done = false)
                 PendingOp.UPDATE -> change.event?.let { local ->
                     event.copy(
                         title = local.title,
@@ -109,7 +118,7 @@ object PendingChanges {
                     )
                 } ?: event
                 // Series changes are keyed by their own idempotency key, never by an event id.
-                PendingOp.SERIES_CREATE, PendingOp.SERIES_UPDATE, PendingOp.SERIES_DELETE -> event
+                PendingOp.CREATE, PendingOp.SERIES_CREATE, PendingOp.SERIES_UPDATE, PendingOp.SERIES_DELETE -> event
             }
         }
     }

@@ -329,7 +329,7 @@ describe("audit #11: durable deletion of task items", () => {
     expect((await service.get(id))?.done).toBe(false);
   });
 
-  it("still hard-deletes ordinary reminders and hides tombstones from device sync", async () => {
+  it("erases the content of every deleted reminder and hides tombstones from device sync", async () => {
     const store = new MemoryCalendarStore();
     const app = testApp(store);
     const auth = await pairDevice(app);
@@ -339,8 +339,12 @@ describe("audit #11: durable deletion of task items", () => {
     const plainId = created.body.result.structuredContent.event.id;
     await request(app).delete(`/v1/events/${taskId}`).set("Authorization", auth).expect(200);
     await request(app).delete(`/v1/events/${plainId}`).set("Authorization", auth).expect(200);
-    expect(await store.getEvent(plainId)).toBeNull();
-    expect((await store.getEvent(taskId))?.deletedAt).toBeTruthy();
+    // Both are tombstones now, so neither can come back; neither keeps what it said.
+    for (const id of [plainId, taskId]) {
+      const tombstone = await store.getEvent(id);
+      expect(tombstone?.deletedAt).toBeTruthy();
+      expect(tombstone).toMatchObject({ title: "", notes: "", location: "" });
+    }
     const sync = await request(app).get("/v1/sync").set("Authorization", auth).expect(200);
     expect(sync.body.events).toEqual([]);
     const republished = await mcpCall(app, "publish_task_reminders", { taskKey: "planner", reminders: [item] });

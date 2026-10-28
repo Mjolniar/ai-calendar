@@ -6,6 +6,13 @@ import android.os.Looper
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** What became of a phone reminder once its upload was accepted. */
+sealed interface UploadOutcome {
+    data object Adopted : UploadOutcome
+    data object DeletedMeanwhile : UploadOutcome
+    data class EditedMeanwhile(val latest: PlannerEvent) : UploadOutcome
+}
+
 /** Result of applying a server snapshot. [previous] is the local state before the merge. */
 data class RemoteMerge(
     val events: List<PlannerEvent>,
@@ -74,7 +81,9 @@ class EventRepository(context: Context) {
         // Keep our copy of records the server sent in a malformed shape instead of deleting them.
         val keptUnparsed = current.filter { it.remote && it.id in snapshot.unparsedIds && it.id !in incomingIds }
         val removed = current.filter { it.remote && it.id !in incomingIds && it.id !in snapshot.unparsedIds }
-        val local = current.filterNot { it.remote }
+        // A reminder this phone uploaded is listed by the server under the same id: the cloud copy
+        // replaces the phone-only one.
+        val local = current.filterNot { it.remote || it.id in incomingIds }
         val merged = incoming.map { event ->
             event.copy(
                 remote = true,
@@ -144,6 +153,31 @@ class EventRepository(context: Context) {
     }
 
     fun find(eventId: String): PlannerEvent? = loadEvents().firstOrNull { it.id == eventId }
+
+    /** Records the server's revision after it accepted a change, so the next edit is not seen as stale. */
+    fun updateRevision(eventId: String, revision: Long) = synchronized(LocalStoreLock) {
+        if (revision <= 0L) return@synchronized
+        val current = readEvents()
+        if (current.none { it.id == eventId && it.revision != revision }) return@synchronized
+        writeEvents(current.map { if (it.id == eventId) it.copy(revision = revision) else it })
+    }
+
+    /** Reminders that exist only on this phone and are fit to upload. */
+    fun localOnly(): List<PlannerEvent> = loadEvents().filter { !it.remote && it.validationError() == null }
+
+    /**
+     * After an upload of [sent]: the phone copy becomes the cloud reminder (same id, so alarms,
+     * archive state and colors carry over). Says whether it was deleted on the phone while the
+     * upload was in flight, or edited meanwhile, so the caller can delete it in the cloud or send
+     * the edit.
+     */
+    fun adoptUploaded(sent: PlannerEvent): UploadOutcome = synchronized(LocalStoreLock) {
+        val current = readEvents()
+        val local = current.firstOrNull { it.id == sent.id } ?: return@synchronized UploadOutcome.DeletedMeanwhile
+        writeEvents(current.map { if (it.id == sent.id) it.copy(remote = true) else it })
+        if (local.copy(remote = false) == sent.copy(remote = false)) UploadOutcome.Adopted
+        else UploadOutcome.EditedMeanwhile(local.copy(remote = true))
+    }
 
     /**
      * Takes a series' unfinished occurrences off the phone ahead of the server: those on or after

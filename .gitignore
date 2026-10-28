@@ -9,6 +9,8 @@ google-services.json
 *.jks
 
 # Build output
+bridge/release/
+.firebase/
 build/
 app/build/
 .gradle/

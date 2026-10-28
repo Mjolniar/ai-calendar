@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:AICalendar.Desktop"
              xmlns:xp="clr-namespace:AICalendar.Desktop.Xp"
-             Title="AI Calendar" Width="1000" Height="720" MinWidth="720" MinHeight="480"
+             Title="AI Planner" Width="1000" Height="720" MinWidth="720" MinHeight="480"
              WindowStartupLocation="CenterScreen" Icon="AppIcon.ico">
     <xp:XpWindow.Resources>
         <BooleanToVisibilityConverter x:Key="Show" />
@@ -218,7 +218,7 @@
                 <MenuItem Header="_Options..." Click="Options_Click" />
             </MenuItem>
             <MenuItem Header="_Help">
-                <MenuItem Header="_About AI Calendar" Click="About_Click">
+                <MenuItem Header="_About AI Planner" Click="About_Click">
                     <MenuItem.Icon>
                         <Image Source="{StaticResource Icon.Info}" />
                     </MenuItem.Icon>
@@ -300,6 +300,13 @@
                 <RadioButton x:Name="DeliveriesTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Content="Deliveries" Click="Section_Click" />
                 <RadioButton x:Name="AllTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Content="All" Click="Section_Click" />
                 <RadioButton x:Name="ArchivedTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Content="Archived" Click="Section_Click" />
+                <RadioButton x:Name="KitchenTab" Style="{StaticResource Xp.Tab}" GroupName="Section" Click="Section_Click"
+                             Margin="6,0,0,0" ToolTip="Shopping list, pantry and the week's meal plan">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource Icon.Kitchen}" Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Kitchen" VerticalAlignment="Center" />
+                    </StackPanel>
+                </RadioButton>
             </StackPanel>
         </Border>
 
@@ -388,7 +395,7 @@
             </Border>
 
             <!-- Reminder list -->
-            <Grid Grid.Column="1" Background="{DynamicResource Xp.Window}">
+            <Grid x:Name="ListArea" Grid.Column="1" Background="{DynamicResource Xp.Window}">
                 <ListBox x:Name="ReminderList" Style="{StaticResource Xp.List}" SelectionMode="Single"
                          PreviewMouseLeftButtonDown="ReminderList_PreviewMouseLeftButtonDown"
                          PreviewMouseWheel="ReminderList_PreviewMouseWheel"
@@ -402,6 +409,9 @@
                             Visibility="Collapsed" Click="EmptyLink_Click" />
                 </StackPanel>
             </Grid>
+
+            <!-- Kitchen tab: shopping list, pantry, meal plan -->
+            <local:KitchenView x:Name="KitchenPanel" Grid.ColumnSpan="2" Visibility="Collapsed" />
         </Grid>
     </DockPanel>
 </xp:XpWindow>

@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { createMcpServer } from "../src/mcp.js";
 import { NoopNotifier, type DeviceNotifier } from "../src/notifier.js";
+import { CanvasSyncService } from "../src/canvas.js";
 import { CalendarService } from "../src/service.js";
 import { MemoryCalendarStore } from "../src/store.js";
-import type { SeriesInput } from "../src/types.js";
+import type { ReminderEvent, ReminderSeries, SeriesInput } from "../src/types.js";
 
 class CountingNotifier implements DeviceNotifier {
   calls = 0;
@@ -210,9 +211,119 @@ describe("series", () => {
       domain: "school",
       rule: { freq: "weekly", weekdays: [2], startDate: "2026-10-13", time: "09:00" },
     });
-    const archived = await service.archiveRoutineSchoolMeetings();
-    expect(archived.updated).toBe(0);
+    const empty: typeof fetch = async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+    const synced = await new CanvasSyncService(service, empty).sync({ baseUrl: "https://school.example.test", accessToken: "t" }, new Date("2026-10-08T17:00:00Z"));
+    expect(synced.routineMeetingsArchived).toBe(0);
     expect((await open(service, series.id)).length).toBeGreaterThan(0);
+  });
+});
+
+describe("deletes that stay deleted", () => {
+  // expandSeries is what the scheduled run calls with the series list it read at its start.
+  const expandWith = (service: CalendarService, copy: ReminderSeries, events: ReminderEvent[]) =>
+    (service as unknown as { expandSeries(s: ReminderSeries, e: ReminderEvent[]): Promise<unknown> }).expandSeries(copy, events);
+
+  it("an occurrence deleted while an expansion holds an older copy of the series is not brought back", async () => {
+    const { service, store } = setup();
+    const { series, occurrences } = await service.createSeries(trash);
+    const staleCopy = (await service.getSeries(series.id))!;
+    await service.delete(occurrences[1].id);
+    await expandWith(service, staleCopy, await store.listEvents(true));
+    expect((await service.list(true)).map((event) => event.id)).not.toContain(occurrences[1].id);
+  });
+
+  it("a series deleted while an expansion holds an older copy does not come back", async () => {
+    const { service, store } = setup();
+    const { series } = await service.createSeries(trash);
+    const staleCopy = (await service.getSeries(series.id))!;
+    await service.deleteSeries(series.id);
+    await expandWith(service, staleCopy, await store.listEvents(true));
+    expect((await service.list(false)).filter((event) => event.seriesId === series.id)).toEqual([]);
+  });
+
+  it("a reminder made on a phone and deleted elsewhere is not recreated by the phone retrying its upload", async () => {
+    const { service } = setup();
+    const id = "3f2b7c1e-8a4d-4f6b-9c2e-1d5a7b9c0e12";
+    const input = { title: "Dentist", startAt: "2026-10-22T15:30:00Z", timeZone: "America/Denver" };
+    await service.createFromDevice(id, input);
+    await service.delete(id);
+    expect(await service.createFromDevice(id, input)).toEqual({ conflict: "deleted" });
+    expect(await service.get(id)).toBeNull();
+  });
+});
+
+describe("splitting a series (this and all future ones)", () => {
+  // Monday October 26, 2026, noon in Denver. A weekly Monday series of 10 started October 5,
+  // so 3 have passed (Oct 5, 12, 19) and 7 remain counting today's (Oct 26 ... Dec 7).
+  const weekly10: SeriesInput = {
+    title: "Physio",
+    timeZone: "America/Denver",
+    rule: { freq: "weekly", weekdays: [1], startDate: "2026-10-05", time: "17:00", count: 10 },
+  };
+  const dates = async (service: CalendarService, seriesId: string) =>
+    (await service.list(true)).filter((event) => event.seriesId === seriesId && !event.deletedAt).map((event) => event.occurrenceDate).sort();
+
+  it("keeps the remaining number of occurrences when the pattern changes", async () => {
+    const { service } = setup("2026-10-26T18:00:00Z");
+    const { series } = await service.createSeries(weekly10);
+    const split = await service.updateSeries(series.id, { from: "2026-11-02", rule: { weekdays: [1, 3, 5] } });
+    // Remaining from Nov 2 under the old pattern: Nov 2, 9, 16, 23, 30, Dec 7 = 6.
+    expect(await dates(service, split!.series.id)).toEqual(["2026-11-02", "2026-11-04", "2026-11-06", "2026-11-09", "2026-11-11", "2026-11-13"]);
+    expect(await dates(service, series.id)).toEqual(["2026-10-26"]);
+  });
+
+  it("keeps the remaining number when the frequency changes", async () => {
+    const { service } = setup("2026-10-26T18:00:00Z");
+    const { series } = await service.createSeries(weekly10);
+    const split = await service.updateSeries(series.id, { from: "2026-11-02", rule: { freq: "daily" } });
+    expect(await dates(service, split!.series.id)).toEqual(["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07"]);
+  });
+
+  it("keeps the remaining number when the first date moves earlier", async () => {
+    const { service } = setup("2026-10-26T18:00:00Z");
+    const { series } = await service.createSeries(weekly10);
+    const split = await service.updateSeries(series.id, { from: "2026-11-02", rule: { startDate: "2026-10-06", weekdays: [2] } });
+    expect(await dates(service, split!.series.id)).toEqual(["2026-11-03", "2026-11-10", "2026-11-17", "2026-11-24", "2026-12-01", "2026-12-08"]);
+  });
+
+  it("refuses a change from a date after the series has ended, instead of making an empty series", async () => {
+    const { service } = setup("2026-10-26T18:00:00Z");
+    const { series } = await service.createSeries({ ...weekly10, rule: { ...weekly10.rule, count: undefined } });
+    await service.updateSeries(series.id, { from: "2026-11-02", title: "Physio (new clinic)" });
+    await expect(service.updateSeries(series.id, { from: "2026-11-16", rule: { time: "11:00" } })).rejects.toThrow(/after this series ends/);
+  });
+
+  it("a retried split without a key makes no second series", async () => {
+    const { service } = setup("2026-10-26T18:00:00Z");
+    const { series } = await service.createSeries({ ...weekly10, rule: { ...weekly10.rule, count: undefined } });
+    const first = await service.updateSeries(series.id, { from: "2026-11-02", title: "Physio (new clinic)" });
+    const retry = await service.updateSeries(series.id, { from: "2026-11-02", title: "Physio (new clinic)" });
+    expect(retry!.series.id).toBe(first!.series.id);
+    expect((await service.listSeries()).length).toBe(2);
+  });
+
+  it("a split interrupted before the old part was ended is completed by the retry", async () => {
+    const { service, store } = setup("2026-10-26T18:00:00Z");
+    const { series } = await service.createSeries({ ...weekly10, rule: { ...weekly10.rule, count: undefined } });
+    const input = { from: "2026-11-02", title: "Physio (new clinic)", idempotencyKey: "split-retry-0001" };
+    await service.updateSeries(series.id, input);
+    // Undo the end of the old part, as if the call had died between the two writes.
+    await store.mutateSeries(series.id, (current) => current ? { ...current, rule: { ...current.rule, until: undefined } } : null);
+    await service.updateSeries(series.id, input);
+    expect((await service.getSeries(series.id))!.rule.until).toBe("2026-11-01");
+    const all = (await service.list(true)).filter((event) => event.seriesId && !event.deletedAt).map((event) => event.occurrenceDate);
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("does not duplicate a date that was already done before the split", async () => {
+    const { service } = setup("2026-10-26T18:00:00Z");
+    const { series, occurrences } = await service.createSeries({ ...weekly10, rule: { ...weekly10.rule, count: undefined } });
+    const nov9 = occurrences.find((event) => event.occurrenceDate === "2026-11-09")!;
+    await service.update(nov9.id, { done: true });
+    const split = await service.updateSeries(series.id, { from: "2026-11-02", title: "Physio (new clinic)" });
+    const nov9s = (await service.list(true)).filter((event) => event.occurrenceDate === "2026-11-09" && event.seriesId);
+    expect(nov9s).toHaveLength(1);
+    expect(split!.series.skippedDates).toContain("2026-11-09");
   });
 });
 

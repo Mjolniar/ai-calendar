@@ -197,8 +197,12 @@ private fun XpCaptionButton(glyph: CaptionGlyph, label: String, onClick: (() -> 
 
 class XpMenu(val title: String, val content: @Composable ColumnScope.(dismiss: () -> Unit) -> Unit)
 
+/**
+ * Menu bar. [trailing] is a toolbar band sharing the row, right-aligned, as XP's rebar puts a
+ * toolbar beside the menus.
+ */
 @Composable
-fun XpMenuBar(menus: List<XpMenu>, modifier: Modifier = Modifier) {
+fun XpMenuBar(menus: List<XpMenu>, modifier: Modifier = Modifier, trailing: (@Composable RowScope.() -> Unit)? = null) {
     var open by remember { mutableIntStateOf(-1) }
     Row(
         modifier.fillMaxWidth().background(XpColors.face).padding(horizontal = 2.dp),
@@ -220,6 +224,10 @@ fun XpMenuBar(menus: List<XpMenu>, modifier: Modifier = Modifier) {
                     menu.content(this) { open = -1 }
                 }
             }
+        }
+        if (trailing != null) {
+            Spacer(Modifier.weight(1f))
+            trailing()
         }
     }
 }

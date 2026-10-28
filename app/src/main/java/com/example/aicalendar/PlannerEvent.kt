@@ -36,6 +36,8 @@ data class PlannerEvent(
     val occurrenceDate: String = "",
     /** An occurrence that was changed on its own ("this one"). */
     val detached: Boolean = false,
+    /** The server's revision of this copy (0 for a phone-only reminder): edits send it, so a stale copy is refused. */
+    val revision: Long = 0L,
 ) {
     val isOccurrence: Boolean get() = seriesId.isNotBlank()
 
@@ -68,6 +70,7 @@ data class PlannerEvent(
         .put("seriesId", seriesId)
         .put("occurrenceDate", occurrenceDate)
         .put("detached", detached)
+        .put("revision", revision)
 
     companion object {
         fun fromJson(json: JSONObject): PlannerEvent = PlannerEvent(
@@ -107,6 +110,7 @@ data class PlannerEvent(
             seriesId = json.optString("seriesId"),
             occurrenceDate = json.optString("occurrenceDate"),
             detached = json.optBoolean("detached", false),
+            revision = json.optLong("revision", 0L),
         )
     }
 }

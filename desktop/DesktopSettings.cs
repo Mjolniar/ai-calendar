@@ -64,6 +64,9 @@ public sealed class ViewSettings
     public string Section { get; set; } = "life";
     public bool CalendarMode { get; set; }
 
+    /// <summary>The part of the Kitchen tab last chosen: week, list or pantry.</summary>
+    public string KitchenPart { get; set; } = "week";
+
     /// <summary>Closing the window hides it; the app keeps running in the notification area.</summary>
     public bool KeepInTray { get; set; }
 
@@ -76,7 +79,8 @@ public sealed class ViewSettings
 
     internal ViewSettings Normalize()
     {
-        if (Section is not ("life" or "school" or "delivery" or "all" or "archived")) Section = "life";
+        if (Section is not ("life" or "school" or "delivery" or "all" or "archived" or "kitchen")) Section = "life";
+        if (KitchenPart is not ("week" or "list" or "pantry")) KitchenPart = "week";
         return this;
     }
 }

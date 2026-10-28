@@ -1,9 +1,14 @@
 # Instructions for coding agents
 
-You are working on AI Calendar: an Android app (`app/`), a Windows app (`desktop/`) and a
-Firebase Functions backend (`bridge/`) that share one cloud calendar. AI clients write to it
-through the bridge's MCP server. Read this file first, then `docs/ARCHITECTURE.md` before
-changing behavior.
+You are working on AI Planner: an Android app (`app/`, package `com.example.aicalendar`), a
+Windows app (`desktop/`) and a Firebase Functions backend (`bridge/`) that share one cloud
+planner: reminders, deliveries, school work and the Kitchen (shopping list, pantry, meal plan).
+AI clients write to it through the bridge's MCP server. Read this file first, then
+`docs/ARCHITECTURE.md` (and `docs/kitchen.md` for the Kitchen) before changing behavior.
+
+The project used to be called AI Calendar. The package, the Windows exe and its install and
+settings folders, the project files and the `AI_CALENDAR_*` settings keep that name on purpose:
+renaming them would break cloud updates, taskbar pins and existing pairings.
 
 ## If you are asked to set the project up from scratch
 
@@ -36,8 +41,10 @@ their secrets.
 | What | Command (repository root) |
 |---|---|
 | Bridge typecheck and tests | `cd bridge && npm ci && npx tsc -p tsconfig.json --noEmit && npm test` |
+| Bridge tests against the Firestore emulator | `scripts/test-emulator.ps1` (Java 11+; downloads the emulator once) |
 | Bridge deploy | `node bridge/node_modules/firebase-tools/lib/bin/firebase.js deploy --only functions` (or `scripts/deploy-bridge.ps1`) |
 | Phone unit tests, lint, debug APK | `scripts/build-app.ps1 :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` (or `./gradlew` with `--no-daemon`) |
+| Phone update over the cloud | `scripts/publish-app.ps1` (bump `versionCode` first; it deploys `api` with the APK in `bridge/release/`) |
 | Phone screens and UI flows, no device | `ui-harness/run.ps1` (pictures: `ui-harness/build/shots`, `shots-dark`) |
 | Windows tests | `scripts/test-desktop.ps1` (or `dotnet test desktop/tests`) |
 | Windows install | `scripts/install-desktop.ps1` |
@@ -68,6 +75,8 @@ Windows traps that already cost time:
    original; icons are generated, never hand-edited.
 4. **Deliveries never alert,** on any device, whatever lead times they carry. A reminder is a
    delivery only when it says so (`domain: "delivery"`); never infer it from wording.
+   **Kitchen rules live only on the server** (`bridge/src/kitchen.ts`, contract in
+   `docs/kitchen.md`); the apps show the snapshot and send small edits.
 5. **MCP compatibility.** AI clients read the tool list when a session starts. Add optional
    fields and new tools; never rename or remove. The `instructions` string in
    `bridge/src/mcp.ts` steers every client: treat a change to it as a behavior change.
@@ -76,7 +85,7 @@ Windows traps that already cost time:
 7. **Windows tests** never show a window on screen, take the focus or start the real `App`
    (`desktop/tests/UiFixture.cs` is the pattern).
 8. **Phone installs:** `adb install -r` only. Uninstalling or clearing the app erases its local
-   reminders, its outbox of unsent changes and its pairing.
+   reminders, its outboxes of unsent changes (reminders and kitchen) and its pairing.
 9. **Versions:** bump `versionCode`/`versionName` in `app/build.gradle.kts` and `Version` in
    `desktop/AI.Calendar.Desktop.csproj` with every shipped change, and keep the READMEs current.
 10. **Deploy order:** bridge first when the apps depend on it, then check `/health` and one MCP

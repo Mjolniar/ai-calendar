@@ -11,7 +11,19 @@ This service is both the private MCP endpoint used by AI clients (Claude session
 - `PATCH /v1/events/:id`, `POST /v1/events/:id/done`, `DELETE /v1/events/:id`: change, complete or delete one reminder.
 - `POST /v1/series`, `PATCH /v1/series/:id`, `DELETE /v1/series/:id`: create, change or delete a repeating reminder. `PATCH` takes `from` and `DELETE` takes `?from=` (a local date) for "this and all future ones".
 - `POST /v1/canvas/sync`: refreshes Canvas assignments and their course/detail metadata for a paired device.
+- `GET /v1/kitchen` and `/v1/kitchen/items`, `/v1/kitchen/pantry`, `/v1/kitchen/notes/:date`: the Kitchen (below).
 - `GET /health`: unauthenticated health check.
+
+## Kitchen
+
+The household's shopping list, pantry, weekly meal plan and dinner notes, shown in the apps' Kitchen view and kept up by Claude's weekly grocery run through the `kitchen_*` MCP tools (`kitchen_get`, `kitchen_list_add`, `kitchen_list_update`, `kitchen_pantry_set`, `kitchen_week_publish`). The contract is `docs/kitchen.md`; every rule is in `src/kitchen.ts`:
+
+- Adding something already open on the list (same name, ignoring case, spacing, punctuation and a plural "s") reuses that item.
+- Marking a pantry item Out puts it on the shopping list; ticking a list item as got sets the pantry item with that name back to Have.
+- Got items stay in the apps' list for 7 days, and in storage for 30.
+- The current week is the published week that contains today in `America/Denver`; `nextWeek` is the next one published.
+
+Storage: key-value documents in the `integrations` collection (`kitchen:list`, `kitchen:pantry`, `kitchen:notes`, `kitchen:weeks`, `kitchen:week:<start>`), each changed in a Firestore transaction (`mutateKv`). Kitchen changes send no push signal; the apps fetch the snapshot when the Kitchen view is shown.
 
 ## Feeds
 

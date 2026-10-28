@@ -1,4 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
+import { createReadStream, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { CalendarStore } from "./store.js";
@@ -10,6 +13,7 @@ import { OAuthService } from "./oauth.js";
 import { CanvasSyncService, type CanvasConfig } from "./canvas.js";
 import { OutlookService, type OutlookConfig } from "./outlook.js";
 import type { EventCategory, EventDomain } from "./types.js";
+import { KitchenService, type NotePatch, type PantryStatus } from "./kitchen.js";
 
 export type AppConfig = {
   apiToken: string;
@@ -24,12 +28,38 @@ export type AppConfig = {
   canvas?: CanvasConfig;
   outlook?: OutlookConfig;
   fetcher?: typeof fetch;
+  /** Folder with the published phone build (`app.apk` and `release.json`). Default: `release/` beside the code. */
+  releaseDir?: string;
 };
+
+/** The phone build the bridge offers, as `scripts/publish-app.ps1` writes it. */
+export type AppRelease = {
+  versionCode: number;
+  versionName: string;
+  sha256: string;
+  size: number;
+  publishedAt: string;
+};
+
+function readRelease(dir: string): AppRelease | null {
+  try {
+    const release = JSON.parse(readFileSync(join(dir, "release.json"), "utf8")) as AppRelease;
+    const apk = statSync(join(dir, "app.apk"));
+    const valid = Number.isInteger(release.versionCode) && release.versionCode > 0
+      && typeof release.versionName === "string"
+      && /^[0-9a-f]{64}$/.test(release.sha256)
+      && release.size === apk.size;
+    return valid ? release : null;
+  } catch {
+    return null;
+  }
+}
 
 export function createApp(store: CalendarStore, notifier: DeviceNotifier, config: AppConfig) {
   const app = express();
   const service = new CalendarService(store, notifier);
-  const canvasSync = config.canvas ? new CanvasSyncService(service) : null;
+  const kitchen = new KitchenService(store, undefined, notifier);
+  const canvasSync = config.canvas ? new CanvasSyncService(service, config.fetcher ?? fetch) : null;
   // One pairing guard for every pairing-code endpoint, so failures are throttled across all of them.
   const pairing = new PairingGuard(config.pairingCode);
   const registrationLimiter = new AttemptLimiter(20, 60 * 60 * 1000);
@@ -151,6 +181,8 @@ export function createApp(store: CalendarStore, notifier: DeviceNotifier, config
     res.json(await service.syncSnapshot());
   });
 
+  registerKitchenRoutes(app, store, kitchen);
+
   app.post("/v1/series", deviceAuth(store), async (req, res) => {
     const invalid = seriesBodyError(req.body, true);
     if (invalid) {
@@ -206,6 +238,32 @@ export function createApp(store: CalendarStore, notifier: DeviceNotifier, config
     res.json(deleted);
   });
 
+  // Phone updates: paired devices only. The phone checks the version, downloads the file, verifies
+  // its SHA-256 against this answer, and hands it to Android, which also requires the same signing
+  // key as the installed app.
+  // Compiled to dist/src/app.js, so the folder beside package.json is two levels up.
+  const releaseDir = config.releaseDir ?? fileURLToPath(new URL("../../release/", import.meta.url));
+  app.get("/v1/app/latest", deviceAuth(store), (_req, res) => {
+    const release = readRelease(releaseDir);
+    if (!release) {
+      res.status(404).json({ error: "No phone build is published" });
+      return;
+    }
+    res.json(release);
+  });
+
+  app.get("/v1/app/apk", deviceAuth(store), (_req, res) => {
+    const release = readRelease(releaseDir);
+    if (!release) {
+      res.status(404).json({ error: "No phone build is published" });
+      return;
+    }
+    res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    res.setHeader("Content-Length", String(release.size));
+    res.setHeader("X-Content-SHA256", release.sha256);
+    createReadStream(join(releaseDir, "app.apk")).pipe(res);
+  });
+
   app.post("/v1/canvas/sync", deviceAuth(store), async (_req, res) => {
     if (!canvasSync || !config.canvas) {
       res.status(503).json({ error: "Canvas is not configured" });
@@ -214,26 +272,32 @@ export function createApp(store: CalendarStore, notifier: DeviceNotifier, config
     res.json(await canvasSync.sync(config.canvas));
   });
 
-  app.post("/v1/events/:id/done", deviceAuth(store), async (req, res) => {
-    if (!validEventId(req.params.id)) {
-      res.status(404).json({ error: "Reminder not found" });
-      return;
-    }
-    const updated = await service.update(String(req.params.id), { done: true });
-    if (!updated) {
-      res.status(404).json({ error: "Reminder not found" });
-      return;
-    }
-    res.json({ event: updated.event, notified: updated.notified });
-  });
+  // Done and not done change nothing else, so a device never sends its (possibly older) copy of
+  // the rest of the reminder just to tick it.
+  for (const [path, done] of [["done", true], ["undone", false]] as const) {
+    app.post(`/v1/events/:id/${path}`, deviceAuth(store), async (req, res) => {
+      if (!validEventId(req.params.id)) {
+        res.status(404).json({ error: "Reminder not found" });
+        return;
+      }
+      const updated = await service.update(String(req.params.id), { done });
+      if (!updated) {
+        res.status(404).json({ error: "Reminder not found" });
+        return;
+      }
+      res.json({ event: updated.event, notified: updated.notified });
+    });
+  }
 
-  app.patch("/v1/events/:id", deviceAuth(store), async (req, res) => {
-    if (typeof req.body?.title !== "string" || typeof req.body?.startAt !== "string" || typeof req.body?.timeZone !== "string") {
-      res.status(400).json({ error: "title, startAt, and timeZone are required" });
+  // A reminder made on a device joins the cloud calendar under the device's own id (a UUID).
+  app.post("/v1/events", deviceAuth(store), async (req, res) => {
+    const id = typeof req.body?.id === "string" ? req.body.id.trim().toLowerCase() : "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) {
+      res.status(400).json({ error: "id must be a UUID" });
       return;
     }
-    if (!validEventId(req.params.id)) {
-      res.status(404).json({ error: "Reminder not found" });
+    if (typeof req.body?.title !== "string" || typeof req.body?.startAt !== "string") {
+      res.status(400).json({ error: "title and startAt are required" });
       return;
     }
     const invalid = deviceEditError(req.body);
@@ -241,23 +305,64 @@ export function createApp(store: CalendarStore, notifier: DeviceNotifier, config
       res.status(400).json({ error: invalid });
       return;
     }
-    const updated = await service.update(String(req.params.id), {
+    const result = await service.createFromDevice(id, {
       title: req.body.title,
       startAt: req.body.startAt,
-      // A phone can report a non-IANA zone ID (e.g. "GMT+05:00"); keep the stored zone rather than corrupt it.
-      timeZone: isValidTimeZone(req.body.timeZone) ? req.body.timeZone : undefined,
+      // A phone can report a non-IANA zone ID (e.g. "GMT+05:00"); the instant is exact either way.
+      timeZone: isValidTimeZone(req.body.timeZone) ? req.body.timeZone : "UTC",
       location: typeof req.body.location === "string" ? req.body.location : "",
       notes: typeof req.body.notes === "string" ? req.body.notes : "",
       critical: Boolean(req.body.critical),
-      done: typeof req.body.done === "boolean" ? req.body.done : undefined,
+      done: typeof req.body.done === "boolean" ? req.body.done : false,
       domain: isDomain(req.body.domain) ? req.body.domain : undefined,
       category: isCategory(req.body.category) ? req.body.category : undefined,
-      reminderOffsetsMinutes: Array.isArray(req.body.reminderOffsetsMinutes)
-        ? req.body.reminderOffsetsMinutes
-        : undefined,
+      reminderOffsetsMinutes: Array.isArray(req.body.reminderOffsetsMinutes) ? req.body.reminderOffsetsMinutes : undefined,
     });
+    if ("conflict" in result) {
+      res.status(409).json({ error: result.conflict === "deleted" ? "This reminder was deleted in the cloud" : "That id is already in use" });
+      return;
+    }
+    res.status(result.created ? 201 : 200).json(result);
+  });
+
+  // Changes the fields the device sends; the others stay. With `baseRevision` (the revision the
+  // device's copy had), an edit made from an older copy is refused with 409 and the current reminder.
+  app.patch("/v1/events/:id", deviceAuth(store), async (req, res) => {
+    if (!validEventId(req.params.id)) {
+      res.status(404).json({ error: "Reminder not found" });
+      return;
+    }
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+    const invalid = deviceEditError(body);
+    if (invalid) {
+      res.status(400).json({ error: invalid });
+      return;
+    }
+    const input = {
+      ...(typeof body.title === "string" ? { title: body.title } : {}),
+      ...(typeof body.startAt === "string" ? { startAt: body.startAt } : {}),
+      // A phone can report a non-IANA zone ID (e.g. "GMT+05:00"); keep the stored zone rather than corrupt it.
+      ...(isValidTimeZone(body.timeZone) ? { timeZone: body.timeZone } : {}),
+      ...(typeof body.location === "string" ? { location: body.location } : {}),
+      ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+      ...(typeof body.critical === "boolean" ? { critical: body.critical } : {}),
+      ...(typeof body.done === "boolean" ? { done: body.done } : {}),
+      ...(isDomain(body.domain) ? { domain: body.domain } : {}),
+      ...(isCategory(body.category) ? { category: body.category } : {}),
+      ...(Array.isArray(body.reminderOffsetsMinutes) ? { reminderOffsetsMinutes: body.reminderOffsetsMinutes as number[] } : {}),
+    };
+    if (Object.keys(input).length === 0) {
+      res.status(400).json({ error: "Nothing to change" });
+      return;
+    }
+    const baseRevision = typeof body.baseRevision === "number" && Number.isFinite(body.baseRevision) ? body.baseRevision : undefined;
+    const updated = await service.update(String(req.params.id), input, { baseRevision });
     if (!updated) {
       res.status(404).json({ error: "Reminder not found" });
+      return;
+    }
+    if (updated.conflict) {
+      res.status(409).json({ error: "This reminder changed on another device", event: updated.event });
       return;
     }
     res.json({ event: updated.event, notified: updated.notified });
@@ -283,7 +388,7 @@ export function createApp(store: CalendarStore, notifier: DeviceNotifier, config
     }
     const server = createMcpServer(service, canvasSync && config.canvas
       ? () => canvasSync.sync(config.canvas!)
-      : undefined, outlook ?? undefined, store);
+      : undefined, outlook ?? undefined, store, kitchen);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();
@@ -338,9 +443,11 @@ function validEventId(value: unknown): value is string {
 }
 
 function deviceEditError(body: Record<string, unknown>): string | null {
-  const title = String(body.title).trim();
-  if (!title || title.length > 500) return "title must be 1-500 characters";
-  if (Number.isNaN(Date.parse(String(body.startAt)))) return "startAt must be a valid timestamp";
+  if (body.title !== undefined) {
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!title || title.length > 500) return "title must be 1-500 characters";
+  }
+  if (body.startAt !== undefined && (typeof body.startAt !== "string" || Number.isNaN(Date.parse(body.startAt)))) return "startAt must be a valid timestamp";
   if (body.location !== undefined && (typeof body.location !== "string" || body.location.length > 1000)) return "location must be at most 1000 characters";
   if (body.notes !== undefined && (typeof body.notes !== "string" || body.notes.length > 10000)) return "notes must be at most 10000 characters";
   const offsets = body.reminderOffsetsMinutes;
@@ -404,13 +511,134 @@ function apiAuth(config: AppConfig, oauth: OAuthService) {
 function deviceAuth(store: CalendarStore) {
   return async (req: Request, res: Response, next: NextFunction) => {
     const token = bearerToken(req.header("authorization"));
-    if (!token || !(await store.findDeviceByAuthHash(hashToken(token)))) {
+    const device = token ? await store.findDeviceByAuthHash(hashToken(token)) : null;
+    if (!device) {
       res.setHeader("WWW-Authenticate", "Bearer");
       res.status(401).json({ error: "Unauthorized device" });
       return;
     }
+    res.locals.deviceName = device.deviceName || "A device";
+    res.locals.deviceId = device.id;
     next();
   };
+}
+
+/** Kitchen ids are `k`/`p` plus base36; anything else never reaches a lookup. */
+function validKitchenId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+}
+
+function registerKitchenRoutes(app: express.Express, store: CalendarStore, kitchen: KitchenService) {
+  const auth = deviceAuth(store);
+  const body = (req: Request) => (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const revision = async () => (await kitchen.snapshot()).revision;
+  const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+  // The device that made a change already has the result; the others get a kitchen_sync signal.
+  const changed = (res: Response) => kitchen.signal(String(res.locals.deviceId));
+
+  app.get("/v1/kitchen", auth, async (_req, res) => {
+    res.json(await kitchen.snapshot());
+  });
+
+  app.post("/v1/kitchen/items", auth, async (req, res) => {
+    const input = body(req);
+    const [added] = await kitchen.addItems([{ name: input.name as string, qty: text(input.qty), note: text(input.note) }], "device", String(res.locals.deviceName));
+    await changed(res);
+    res.status(added.created ? 201 : 200).json({ revision: await revision(), ...added });
+  });
+
+  app.patch("/v1/kitchen/items/:id", auth, async (req, res) => {
+    const input = body(req);
+    if (input.status !== undefined && input.status !== "need" && input.status !== "got") {
+      res.status(400).json({ error: "status must be need or got" });
+      return;
+    }
+    const item = validKitchenId(req.params.id)
+      ? await kitchen.updateItem(String(req.params.id), {
+        ...(input.name !== undefined ? { name: input.name as string } : {}),
+        qty: text(input.qty), note: text(input.note), status: input.status as "need" | "got" | undefined,
+      })
+      : null;
+    if (!item) {
+      res.status(404).json({ error: "Item not found" });
+      return;
+    }
+    await changed(res);
+    res.json({ revision: await revision(), item });
+  });
+
+  app.delete("/v1/kitchen/items/:id", auth, async (req, res) => {
+    if (!validKitchenId(req.params.id) || !(await kitchen.deleteItem(String(req.params.id)))) {
+      res.status(404).json({ error: "Item not found" });
+      return;
+    }
+    await changed(res);
+    res.json({ revision: await revision(), deleted: true });
+  });
+
+  app.post("/v1/kitchen/pantry", auth, async (req, res) => {
+    const input = body(req);
+    const added = await kitchen.addPantryItem({ name: input.name as string, section: text(input.section), status: input.status as PantryStatus | undefined });
+    if (added.created) await changed(res);
+    res.status(added.created ? 201 : 200).json({ revision: await revision(), ...added });
+  });
+
+  app.patch("/v1/kitchen/pantry/:id", auth, async (req, res) => {
+    const input = body(req);
+    const updated = validKitchenId(req.params.id)
+      ? await kitchen.updatePantryItem(String(req.params.id), { status: input.status as PantryStatus | undefined, note: text(input.note), section: text(input.section) })
+      : null;
+    if (!updated) {
+      res.status(404).json({ error: "Pantry item not found" });
+      return;
+    }
+    await changed(res);
+    res.json({ revision: await revision(), ...updated });
+  });
+
+  app.delete("/v1/kitchen/pantry/:id", auth, async (req, res) => {
+    if (!validKitchenId(req.params.id) || !(await kitchen.deletePantryItem(String(req.params.id)))) {
+      res.status(404).json({ error: "Pantry item not found" });
+      return;
+    }
+    await changed(res);
+    res.json({ revision: await revision(), deleted: true });
+  });
+
+  // Corrections to Claude's pantry estimate: out/have apply at once; a note waits for Claude.
+  app.post("/v1/kitchen/corrections", auth, async (req, res) => {
+    const input = body(req);
+    if (input.itemId !== undefined && !validKitchenId(input.itemId)) {
+      res.status(404).json({ error: "Pantry item not found" });
+      return;
+    }
+    const added = await kitchen.addCorrection({ kind: input.kind, text: input.text, itemId: input.itemId }, String(res.locals.deviceName));
+    if (!added) {
+      res.status(404).json({ error: "Pantry item not found" });
+      return;
+    }
+    await changed(res);
+    res.status(201).json({ revision: await revision(), ...added });
+  });
+
+  app.delete("/v1/kitchen/corrections/:id", auth, async (req, res) => {
+    if (!validKitchenId(req.params.id) || !(await kitchen.withdrawCorrection(String(req.params.id)))) {
+      res.status(404).json({ error: "No open correction with that id" });
+      return;
+    }
+    await changed(res);
+    res.json({ revision: await revision(), deleted: true });
+  });
+
+  app.put("/v1/kitchen/notes/:date", auth, async (req, res) => {
+    const input = body(req);
+    const date = String(req.params.date);
+    const note = await kitchen.setNote(date, {
+      cooked: input.cooked as NotePatch["cooked"], rating: input.rating as NotePatch["rating"], note: text(input.note),
+    });
+    await changed(res);
+    res.json({ revision: await revision(), date, note });
+  });
 }
 
 function isDomain(value: unknown): value is EventDomain {

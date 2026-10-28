@@ -814,7 +814,7 @@ internal fun AboutDialog(
     onDismiss: () -> Unit,
 ) {
     XpDialog(
-        title = "About AI Calendar",
+        title = "About AI Planner",
         onDismiss = onDismiss,
         dismissOnOutside = true,
         buttons = { XpButton("OK", onClick = onDismiss, default = true) },
@@ -823,7 +823,7 @@ internal fun AboutDialog(
             Image(XpIcons.App, contentDescription = null, modifier = Modifier.size(48.dp))
             Spacer(Modifier.width(12.dp))
             Column {
-                Text("AI Calendar", style = XpType.BodyBold.copy(fontSize = 19.sp, lineHeight = 24.sp))
+                Text("AI Planner", style = XpType.BodyBold.copy(fontSize = 19.sp, lineHeight = 24.sp))
                 Text("Version $versionName", style = XpType.Small, color = XpColors.textDim)
             }
         }

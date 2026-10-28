@@ -30,6 +30,7 @@ public partial class MainWindow : XpWindow
     private const string Deliveries = "delivery";
     private const string All = "all";
     private const string Archived = "archived";
+    private const string Kitchen = "kitchen";
 
     /// <summary>A reminder still pops up when its time passed this recently; the check runs every 30 seconds.</summary>
     private const int ReminderGraceMinutes = 2;
@@ -105,6 +106,7 @@ public partial class MainWindow : XpWindow
         _series = ToMap(store.LoadSeries());
         _section = _view.Section;
         _calendarMode = _view.CalendarMode;
+        SetUpKitchen();
         _selectedDate = Now.LocalDateTime.Date;
         _visibleMonth = new DateTime(_selectedDate.Year, _selectedDate.Month, 1);
         RestorePlacement();
@@ -136,6 +138,7 @@ public partial class MainWindow : XpWindow
         RefreshCourses();
         UpdateCloudState();
         Render(viewChanged: true);
+        if (_section == Kitchen && KitchenPanel.FetchedAt is null) _ = FetchKitchenAsync();
         if (!_background) return;
         if (!Paired)
         {
@@ -219,7 +222,7 @@ public partial class MainWindow : XpWindow
         Hide();
         if (_trayHintShown) return;
         _trayHintShown = true;
-        XpBalloon.Show("AI Calendar is still running",
+        XpBalloon.Show("AI Planner is still running",
             "Reminders keep popping up here. Double-click the calendar icon in the notification area to open the window.",
             onClick: ShowFromTray, lifetime: TimeSpan.FromSeconds(10));
     }
@@ -251,7 +254,7 @@ public partial class MainWindow : XpWindow
 
     private void CreateTrayIcon()
     {
-        _notifyIcon = new Forms.NotifyIcon { Icon = LoadTrayIcon(), Text = "AI Calendar", Visible = true };
+        _notifyIcon = new Forms.NotifyIcon { Icon = LoadTrayIcon(), Text = "AI Planner", Visible = true };
         _notifyIcon.MouseDoubleClick += (_, args) =>
         {
             if (args.Button == Forms.MouseButtons.Left) ShowFromTray();
@@ -300,7 +303,7 @@ public partial class MainWindow : XpWindow
     internal ContextMenu BuildTrayMenu()
     {
         var menu = new ContextMenu { Placement = PlacementMode.MousePoint };
-        menu.Items.Add(TrayItem("Open AI Calendar", ShowFromTray, bold: true));
+        menu.Items.Add(TrayItem("Open AI Planner", ShowFromTray, bold: true));
         var sync = TrayItem("Sync Now", () => _ = SyncAsync(showActivity: true));
         sync.IsEnabled = Paired;
         menu.Items.Add(sync);
@@ -407,6 +410,7 @@ public partial class MainWindow : XpWindow
         _client = _connect(_settings);
         UpdateCloudState();
         Render();
+        if (_section == Kitchen) _ = FetchKitchenAsync(force: true);
         return Paired;
     }
 
@@ -463,9 +467,10 @@ public partial class MainWindow : XpWindow
         var now = Now;
         var today = DateOnly.FromDateTime(now.LocalDateTime);
         var archived = _section == Archived;
+        var kitchen = _section == Kitchen;
         var searching = _query.Length > 0;
         // Find lists matches from every date, so it takes over from the month view.
-        var canToggle = !archived && !searching;
+        var canToggle = !archived && !searching && !kitchen;
         var showCalendar = _calendarMode && canToggle;
 
         var current = _events.Where(item => !item.IsArchivedAt(now)).ToList();
@@ -482,6 +487,16 @@ public partial class MainWindow : XpWindow
         CalendarModeButton.IsChecked = CalendarMenuItem.IsChecked = showCalendar;
         ClassRow.Visibility = _section == School && _courses.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
         CalendarPanel.Visibility = showCalendar ? Visibility.Visible : Visibility.Collapsed;
+
+        // The Kitchen tab has its own view; Find and the reminder list wait until another tab is chosen.
+        KitchenPanel.Visibility = kitchen ? Visibility.Visible : Visibility.Collapsed;
+        ListArea.Visibility = kitchen ? Visibility.Collapsed : Visibility.Visible;
+        FindBox.IsEnabled = !kitchen;
+        if (kitchen)
+        {
+            CountText.Text = KitchenPanel.CountText;
+            return;
+        }
 
         IEnumerable<CalendarEvent> matching = _section switch
         {
@@ -669,6 +684,7 @@ public partial class MainWindow : XpWindow
         Deliveries => DeliveriesTab,
         All => AllTab,
         Archived => ArchivedTab,
+        Kitchen => KitchenTab,
         _ => LifeTab,
     };
 
@@ -681,6 +697,9 @@ public partial class MainWindow : XpWindow
         _store.SaveView(_view);
         _selectedId = null;
         Render(viewChanged: true);
+        // The kitchen is fetched each time its tab is shown, and only then kept fresh.
+        if (section == Kitchen) _ = FetchKitchenAsync();
+        else ScheduleKitchenRefresh();
     }
 
     internal void SetCalendarMode(bool calendar)
@@ -728,7 +747,8 @@ public partial class MainWindow : XpWindow
     }
 
     private void Section_Click(object sender, RoutedEventArgs e) =>
-        ShowSection(sender == SchoolTab ? School : sender == DeliveriesTab ? Deliveries : sender == AllTab ? All : sender == ArchivedTab ? Archived : Life);
+        ShowSection(sender == SchoolTab ? School : sender == DeliveriesTab ? Deliveries : sender == AllTab ? All
+            : sender == ArchivedTab ? Archived : sender == KitchenTab ? Kitchen : Life);
 
     private void ListMode_Click(object sender, RoutedEventArgs e) => SetCalendarMode(false);
 
@@ -789,7 +809,7 @@ public partial class MainWindow : XpWindow
         if (e.Handled || Keyboard.FocusedElement is MenuItem) return;
         if (e.Key == Key.F5)
         {
-            _ = SyncAsync(showActivity: true);
+            _ = SyncNowAsync();
             e.Handled = true;
         }
         else if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
@@ -800,17 +820,17 @@ public partial class MainWindow : XpWindow
         else if (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
         {
             // Ctrl+Tab and Ctrl+Shift+Tab go through the tabs, as in any tabbed dialog.
-            string[] sections = [Life, School, Deliveries, All, Archived];
+            string[] sections = [Life, School, Deliveries, All, Archived, Kitchen];
             var step = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? sections.Length - 1 : 1;
             ShowSection(sections[(Array.IndexOf(sections, _section) + step) % sections.Length]);
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape && FindBox.Text.Length > 0)
+        else if (e.Key == Key.Escape && FindBox.Text.Length > 0 && _section != Kitchen)
         {
             FindBox.Clear();
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape && ReminderList.SelectedItem is not null)
+        else if (e.Key == Key.Escape && ReminderList.SelectedItem is not null && _section != Kitchen)
         {
             ReminderList.SelectedItem = null;
             e.Handled = true;
@@ -1044,7 +1064,7 @@ public partial class MainWindow : XpWindow
         SetStatus($"{heading}.");
         if (exception is BridgeException { StatusCode: HttpStatusCode.BadRequest or HttpStatusCode.NotFound } rejected)
         {
-            XpMessageBox.Show(this, "AI Calendar", $"{heading}.\n\n{rejected.Message}", XpMessageIcon.Warning);
+            XpMessageBox.Show(this, "AI Planner", $"{heading}.\n\n{rejected.Message}", XpMessageIcon.Warning);
             return;
         }
         _dismissedNotice = null;
@@ -1161,7 +1181,7 @@ public partial class MainWindow : XpWindow
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Exit();
 
-    private async void Sync_Click(object sender, RoutedEventArgs e) => await SyncAsync(showActivity: true);
+    private async void Sync_Click(object sender, RoutedEventArgs e) => await SyncNowAsync();
 
     private async void Connection_Click(object sender, RoutedEventArgs e) => await OpenConnectionAsync();
 
@@ -1179,7 +1199,7 @@ public partial class MainWindow : XpWindow
             new("Cloud", !Paired ? "Not connected"
                 : _lastSync is { } synced ? $"Connected, last sync {ReminderText.EventDate(synced)}"
                 : "Connected"),
-            new("Alerts", "Pop up while AI Calendar is running"),
+            new("Alerts", "Pop up while AI Planner is running"),
         };
         new AboutWindow(facts) { Owner = this }.ShowDialog();
     }

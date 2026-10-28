@@ -8,6 +8,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -119,14 +120,56 @@ object BridgeApi {
             return@synchronized RemoteWriteOutcome.Failed(it.message ?: "Phone is not paired")
         }
         runCatching { patchEvent(credentials, event) }.fold(
-            onSuccess = {
-                repository.upsert(event)
+            onSuccess = { response ->
+                repository.upsert(event.copy(revision = serverRevision(response) ?: event.revision))
                 store.clearIssue()
                 RemoteWriteOutcome.Saved
             },
-            onFailure = { error -> writeFailure(error, onTransient = { repository.saveAndQueue(event, PendingOp.UPDATE) }) },
+            onFailure = { error ->
+                if (error is BridgeHttpException && error.status == 409) {
+                    // Changed elsewhere since this copy was loaded: load the latest, do not overwrite it.
+                    runCatching { sync(context).getOrThrow() }
+                    RemoteWriteOutcome.Rejected("This reminder was changed on another device. The latest version is loaded; make your change again.")
+                } else {
+                    writeFailure(error, onTransient = { repository.saveAndQueue(event, PendingOp.UPDATE) })
+                }
+            },
         )
     }
+
+    /**
+     * Done or not done for a cloud reminder, and nothing else: no copy of the rest of the reminder is
+     * sent, so a change made elsewhere is never undone by ticking a box. Queued when offline.
+     */
+    fun setRemoteDone(context: Context, event: PlannerEvent, done: Boolean): RemoteWriteOutcome = synchronized(syncLock) {
+        val repository = EventRepository(context)
+        val store = PendingChangeStore(context)
+        val op = if (done) PendingOp.MARK_DONE else PendingOp.MARK_UNDONE
+        val queue = {
+            repository.markDone(event.id, done)
+            store.enqueue(event.id, op)
+        }
+        if (store.get(event.id) != null) {
+            queue()
+            return@synchronized RemoteWriteOutcome.Queued
+        }
+        val credentials = runCatching { credentials(context) }.getOrElse {
+            return@synchronized RemoteWriteOutcome.Failed(it.message ?: "Phone is not paired")
+        }
+        val path = credentials.serverUrl + "/v1/events/${pathId(event.id)}/" + if (done) "done" else "undone"
+        runCatching { request(path, "POST", credentials.token, JSONObject()) }.fold(
+            onSuccess = { response ->
+                repository.markDone(event.id, done)
+                serverRevision(response)?.let { repository.updateRevision(event.id, it) }
+                store.clearIssue()
+                RemoteWriteOutcome.Saved
+            },
+            onFailure = { error -> writeFailure(error, onTransient = { queue() }) },
+        )
+    }
+
+    private fun serverRevision(response: JSONObject): Long? =
+        response.optJSONObject("event")?.optLong("revision", 0L)?.takeIf { it > 0L }
 
     fun deleteRemoteEvent(context: Context, event: PlannerEvent): RemoteWriteOutcome = synchronized(syncLock) {
         val repository = EventRepository(context)
@@ -177,7 +220,7 @@ object BridgeApi {
         val credentials = runCatching { credentials(context) }.getOrElse {
             return@synchronized RemoteWriteOutcome.Failed(it.message ?: "Phone is not paired")
         }
-        val error = runCatching { send(credentials, change) }.exceptionOrNull()
+        val error = runCatching { send(context, credentials, change) }.exceptionOrNull()
         when {
             error == null -> {
                 store.clearIssue()
@@ -220,13 +263,15 @@ object BridgeApi {
      */
     fun flushOutbox(context: Context): OutboxOutcome = synchronized(syncLock) {
         val store = PendingChangeStore(context)
+        val credentials = runCatching { credentials(context) }.getOrNull()
+        // Every reminder made on this phone joins the cloud calendar, so the other devices get it.
+        if (credentials != null) queueLocalUploads(context, store)
         val pending = store.all().values.sortedBy { it.seq }
         if (pending.isEmpty()) return@synchronized OutboxOutcome.DELIVERED
-        val credentials = runCatching { credentials(context) }.getOrNull()
-            ?: return@synchronized OutboxOutcome.BLOCKED
+        if (credentials == null) return@synchronized OutboxOutcome.BLOCKED
         var retry = false
         for (change in pending) {
-            val error = runCatching { send(credentials, change) }.exceptionOrNull()
+            val error = runCatching { send(context, credentials, change) }.exceptionOrNull()
             when {
                 error == null -> store.acknowledge(change)
                 // Already gone on the server: nothing left to deliver.
@@ -253,11 +298,50 @@ object BridgeApi {
         if (retry) OutboxOutcome.RETRY else OutboxOutcome.DELIVERED
     }
 
-    private fun send(credentials: Credentials, change: PendingChange) {
+    /** Queues an upload for each phone-only reminder that has none yet. */
+    private fun queueLocalUploads(context: Context, store: PendingChangeStore) {
+        val queued = store.all().keys
+        EventRepository(context).localOnly()
+            .filter { it.id !in queued }
+            .forEach { store.enqueue(it.id, PendingOp.CREATE) }
+    }
+
+    /**
+     * Uploads one phone reminder as it is now. A 409 means the cloud deleted it, or the id belongs
+     * to another reminder: the phone copy is then removed, so it is not offered again and again.
+     */
+    private fun uploadEvent(context: Context, credentials: Credentials, eventId: String) {
+        val repository = EventRepository(context)
+        val event = repository.find(eventId)?.takeIf { !it.remote } ?: return
+        val response = try {
+            request(credentials.serverUrl + "/v1/events", "POST", credentials.token, eventBody(event).put("id", event.id))
+        } catch (error: BridgeHttpException) {
+            if (error.status != 409) throw error
+            AlarmScheduler.cancelEvent(context, event.id)
+            repository.delete(event.id)
+            return
+        }
+        // The server already had it (an earlier upload whose answer was lost): it kept that copy,
+        // so the phone's current version goes as an update.
+        val alreadyThere = response.has("created") && !response.optBoolean("created")
+        when (val outcome = repository.adoptUploaded(event)) {
+            UploadOutcome.Adopted ->
+                if (alreadyThere) PendingChangeStore(context).enqueue(event.id, PendingOp.UPDATE, event.copy(remote = true))
+            // Deleted on the phone while it uploaded: delete it in the cloud too, later if not now.
+            UploadOutcome.DeletedMeanwhile ->
+                runCatching { request(credentials.serverUrl + "/v1/events/${pathId(event.id)}", "DELETE", credentials.token, null) }
+                    .onFailure { PendingChangeStore(context).enqueue(event.id, PendingOp.DELETE) }
+            is UploadOutcome.EditedMeanwhile -> PendingChangeStore(context).enqueue(event.id, PendingOp.UPDATE, outcome.latest)
+        }
+    }
+
+    private fun send(context: Context, credentials: Credentials, change: PendingChange) {
         val base = credentials.serverUrl + "/v1/events/${pathId(change.eventId)}"
         val series = credentials.serverUrl + "/v1/series"
         when (change.op) {
+            PendingOp.CREATE -> uploadEvent(context, credentials, change.eventId)
             PendingOp.MARK_DONE -> request("$base/done", "POST", credentials.token, JSONObject())
+            PendingOp.MARK_UNDONE -> request("$base/undone", "POST", credentials.token, JSONObject())
             PendingOp.UPDATE -> patchEvent(credentials, change.event ?: return)
             PendingOp.DELETE -> request(base, "DELETE", credentials.token, null)
             PendingOp.SERIES_CREATE -> request(series, "POST", credentials.token, JSONObject(change.payload))
@@ -269,11 +353,18 @@ object BridgeApi {
         }
     }
 
-    private fun patchEvent(credentials: Credentials, event: PlannerEvent) {
+    /** Sends an edit with the revision the phone's copy had: the server refuses it (409) if that copy is stale. */
+    private fun patchEvent(credentials: Credentials, event: PlannerEvent): JSONObject {
+        val body = eventBody(event).apply { if (event.revision > 0L) put("baseRevision", event.revision) }
+        return request(credentials.serverUrl + "/v1/events/${pathId(event.id)}", "PATCH", credentials.token, body)
+    }
+
+    /** The fields a device sends for a reminder, on upload and on edit. */
+    private fun eventBody(event: PlannerEvent): JSONObject {
         val offsets = JSONArray().also { array ->
             event.reminderOffsetsMinutes.forEach(array::put)
         }
-        val body = JSONObject()
+        return JSONObject()
             .put("title", event.title.trim())
             .put("startAt", Instant.ofEpochMilli(event.startAtMillis).toString())
             .put("timeZone", ZoneId.systemDefault().id)
@@ -284,7 +375,6 @@ object BridgeApi {
             .put("domain", event.resolvedDomain().name.lowercase())
             .put("category", event.resolvedCategory().name.lowercase())
             .put("reminderOffsetsMinutes", offsets)
-        request(credentials.serverUrl + "/v1/events/${pathId(event.id)}", "PATCH", credentials.token, body)
     }
 
     /** Pull the authoritative list. Pending phone changes are delivered first and overlaid if still queued. */
@@ -318,6 +408,71 @@ object BridgeApi {
     }
 
     private fun pathId(id: String): String = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+
+    /**
+     * The kitchen routes (docs\kitchen.md) over this HTTPS client with the device token.
+     * Kitchen keeps nothing on the phone: no store, no outbox, no alarms, and it takes no part in
+     * the reminder sync lock.
+     */
+    fun kitchenClient(context: Context): KitchenClient = KitchenClient { method, path, body ->
+        val credentials = credentials(context)
+        request(credentials.serverUrl + path, method, credentials.token, body)
+    }
+
+    /** The published phone build, or null when the bridge offers none. */
+    fun latestRelease(context: Context): AppRelease? {
+        val credentials = credentials(context)
+        return try {
+            AppRelease.fromJson(request(credentials.serverUrl + "/v1/app/latest", "GET", credentials.token, null))
+        } catch (error: BridgeHttpException) {
+            if (error.status == 404) null else throw error
+        }
+    }
+
+    /**
+     * Downloads [release] into the app's cache and verifies it. Returns the file only when its size and
+     * SHA-256 match what the bridge published; anything else is deleted.
+     */
+    fun downloadRelease(context: Context, release: AppRelease): File {
+        val credentials = credentials(context)
+        val url = credentials.serverUrl + "/v1/app/apk"
+        require(url.startsWith("https://")) { "Use an HTTPS bridge URL" }
+        val target = File(context.cacheDir, "update.apk")
+        target.delete()
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 60_000
+            connection.useCaches = false
+            connection.instanceFollowRedirects = false
+            connection.setRequestProperty("Authorization", "Bearer ${credentials.token}")
+            val status = connection.responseCode
+            if (status !in 200..299) throw BridgeHttpException(status, "Bridge returned HTTP $status for the update")
+            connection.inputStream.use { input ->
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > release.size) throw IOException("The update is larger than published")
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
+        } finally {
+            connection.disconnect()
+        }
+        if (!AppUpdater.verify(target, release)) {
+            target.delete()
+            throw IOException("The downloaded update does not match the published one")
+        }
+        return target
+    }
 
     private fun request(url: String, method: String, token: String?, body: JSONObject?): JSONObject {
         // HTTPS only: the bearer device token must never travel in cleartext.

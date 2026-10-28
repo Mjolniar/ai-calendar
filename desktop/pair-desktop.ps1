@@ -16,7 +16,7 @@ $secret = $null
 $temporarySettings = $null
 
 if (Get-Process -Name 'AI Calendar' -ErrorAction SilentlyContinue) {
-    throw 'Close AI Calendar before re-pairing; the running app would overwrite the new pairing on its next save.'
+    throw 'Close AI Planner before re-pairing; the running app would overwrite the new pairing on its next save.'
 }
 
 try {

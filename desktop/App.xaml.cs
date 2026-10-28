@@ -61,8 +61,8 @@ public partial class App : System.Windows.Application
             // Without a window the process would linger unseen and hold the single-instance lock.
             LogCrash("Startup", exception);
             System.Windows.MessageBox.Show(
-                $"AI Calendar could not start.\n\n{exception.GetType().Name}: {Truncate(exception.Message, 300)}",
-                "AI Calendar", MessageBoxButton.OK, MessageBoxImage.Error);
+                $"AI Planner could not start.\n\n{exception.GetType().Name}: {Truncate(exception.Message, 300)}",
+                "AI Planner", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
             return;
         }
@@ -96,14 +96,14 @@ public partial class App : System.Windows.Application
         // Keep the reminder app alive; one faulty handler must not take it down.
         e.Handled = true;
         if (Interlocked.Exchange(ref _errorDialogOpen, 1) == 1) return;
-        var message = $"Something went wrong, but AI Calendar is still running.\n\n{e.Exception.GetType().Name}: {Truncate(e.Exception.Message, 300)}";
+        var message = $"Something went wrong, but AI Planner is still running.\n\n{e.Exception.GetType().Name}: {Truncate(e.Exception.Message, 300)}";
         try
         {
-            try { XpMessageBox.Show(MainWindow, "AI Calendar", message, XpMessageIcon.Warning); }
+            try { XpMessageBox.Show(MainWindow, "AI Planner", message, XpMessageIcon.Warning); }
             catch (Exception)
             {
                 // The themed box itself failed (a broken resource, say): fall back to the system one.
-                System.Windows.MessageBox.Show(message, "AI Calendar", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show(message, "AI Planner", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
         catch (Exception) { }

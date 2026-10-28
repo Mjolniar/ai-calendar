@@ -5,7 +5,7 @@
 <Window x:Class="AICalendar.Desktop.Xp.XpBalloon"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AI Calendar" Width="356" SizeToContent="Height" WindowStartupLocation="Manual"
+        Title="AI Planner" Width="356" SizeToContent="Height" WindowStartupLocation="Manual"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
         ShowInTaskbar="False" ShowActivated="False" Topmost="True" Focusable="False" Opacity="0"
         FontFamily="{StaticResource Xp.Font}" FontSize="13" Foreground="{DynamicResource Xp.TooltipText}"

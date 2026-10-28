@@ -87,6 +87,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.aicalendar.xp.XpAppearance
 import com.example.aicalendar.xp.XpBalloon
 import com.example.aicalendar.xp.XpButton
@@ -145,11 +148,14 @@ internal data class BalloonMessage(
     val text: String = "",
     val actionLabel: String? = null,
     val action: (() -> Unit)? = null,
+    /** Stays until it is dismissed or acted on (update prompts); the others close by themselves. */
+    val sticky: Boolean = false,
 )
 
 private data class CourseOption(val key: String, val label: String, val color: Color)
 
 private const val BALLOON_MILLIS = 7_000L
+private const val ALLOW_UPDATES_TITLE = "Allow updates first"
 private const val STATUS_MILLIS = 5_000L
 private val dayHeaderFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
 private val importTypes = arrayOf("application/json", "text/calendar", "text/*", "*/*")
@@ -158,6 +164,10 @@ private val assessmentDot = Color(0xFFE68B2C)
 /** View choices kept on this phone: tab, list or calendar, class filter, dark mode. */
 private const val VIEW_PREFERENCES = "planner_view"
 private const val PREF_DARK_MODE = "dark_mode"
+
+/** Whether the main pane shows Kitchen instead of the reminders, and which Kitchen tab. */
+private const val PREF_KITCHEN = "kitchen"
+private const val PREF_KITCHEN_TAB = "kitchen_tab"
 
 class MainActivity : ComponentActivity() {
     private val resumeTick = mutableIntStateOf(0)
@@ -284,8 +294,11 @@ internal fun PlannerApp(
     var scopeQuestion by remember { mutableStateOf<Pair<PlannerEvent, Boolean>?>(null) }
     var editorRepeatMode by remember { mutableStateOf(RepeatEditMode.NONE) }
     var editorRepeat by remember { mutableStateOf<RepeatChoice?>(null) }
+    var updating by remember { mutableStateOf(false) }
     var balloon by remember { mutableStateOf<BalloonMessage?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var kitchenOpen by remember { mutableStateOf(viewPreferences.getBoolean(PREF_KITCHEN, false)) }
+    var kitchenTab by remember { mutableStateOf(KitchenTab.fromStored(viewPreferences.getString(PREF_KITCHEN_TAB, null))) }
 
     // Derived lists are recomputed only when their inputs change, not on every recomposition.
     val today = remember(nowMillis) { LocalDate.now() }
@@ -330,9 +343,40 @@ internal fun PlannerApp(
         title: String,
         text: String = "",
         actionLabel: String? = null,
+        sticky: Boolean = false,
         action: (() -> Unit)? = null,
     ) {
-        balloon = BalloonMessage(System.nanoTime(), kind, title, text, actionLabel, action)
+        balloon = BalloonMessage(System.nanoTime(), kind, title, text, actionLabel, action, sticky)
+    }
+
+    // Kitchen talks to the bridge's kitchen routes only. It shares the status line and the balloon
+    // with the reminders, and nothing else: no store, no outbox, no alarms.
+    val kitchen = remember {
+        KitchenController(
+            scope = scope,
+            store = KitchenStore(appContext),
+            connected = { BridgeSettings(appContext).isConnected() },
+            client = { BridgeApi.kitchenClient(appContext) },
+            status = { statusText = it },
+            balloon = { kind, title, text, actionLabel, action -> showBalloon(kind, title, text, actionLabel, action = action) },
+        )
+    }
+
+    /** Switches the main pane between the reminders and Kitchen; the choice is kept on this phone. */
+    fun showKitchen(open: Boolean) {
+        if (kitchenOpen == open) return
+        kitchenOpen = open
+        viewPreferences.edit { putBoolean(PREF_KITCHEN, open) }
+        if (open) {
+            searchActive = false
+            searchQuery = ""
+            selectedEventId = null
+        }
+    }
+
+    fun selectKitchenTab(tab: KitchenTab) {
+        kitchenTab = tab
+        viewPreferences.edit { putString(PREF_KITCHEN_TAB, tab.name) }
     }
 
     fun refresh(updated: List<PlannerEvent> = repository.loadEvents()) {
@@ -374,6 +418,7 @@ internal fun PlannerApp(
 
     /** Switch to wherever [event] is listed, select it and scroll it into view. */
     fun revealEvent(event: PlannerEvent) {
+        showKitchen(false)
         val target = when {
             event.isFiledAt(System.currentTimeMillis()) -> PlannerSection.ARCHIVED
             plannerSection == PlannerSection.ALL -> PlannerSection.ALL
@@ -405,6 +450,9 @@ internal fun PlannerApp(
     fun persistEvent(event: PlannerEvent, closeEditor: Boolean = false, reveal: Boolean = false) {
         if (!event.remote) {
             applyEvent(event)
+            // A reminder made on this phone goes to the cloud calendar too, for the other devices.
+            // The outbox uploads it as it is when it is sent (or later, when the cloud is reachable).
+            if (bridgeConnected) BridgeSyncWorker.enqueueOutbox(appContext)
             if (closeEditor) showEditor = false
             if (reveal) revealEvent(event)
             return
@@ -459,23 +507,44 @@ internal fun PlannerApp(
         refresh(updated)
     }
 
-    fun restoreEvent(event: PlannerEvent) {
-        val restored = event.copy(done = false, archived = false)
-        setManualArchive(event, false)
-        if (event.done) {
-            if (event.remote) persistEvent(restored) else applyEvent(restored)
+    /**
+     * Done or not done. A cloud reminder sends only that (never the rest of this phone's copy, which
+     * may be older than a change made on another device).
+     */
+    fun setDone(event: PlannerEvent, done: Boolean) {
+        if (!event.remote) {
+            applyEvent(event.copy(done = done))
+            return
         }
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                BridgeApi.setRemoteDone(appContext, event, done).also { outcome ->
+                    if (outcome == RemoteWriteOutcome.Queued) BridgeSyncWorker.enqueueOutbox(appContext)
+                    EventRepository(appContext).find(event.id)?.let { syncAlarms(appContext, it) }
+                }
+            }
+            refresh()
+            when (outcome) {
+                RemoteWriteOutcome.Saved -> statusText = if (done) "Marked done" else "Marked not done"
+                RemoteWriteOutcome.Queued -> statusText = "Saved on phone"
+                is RemoteWriteOutcome.Rejected -> showBalloon(BalloonKind.ERROR, "Couldn't save", outcome.message)
+                is RemoteWriteOutcome.Failed -> showBalloon(BalloonKind.ERROR, "Couldn't save", outcome.message)
+            }
+        }
+    }
+
+    fun restoreEvent(event: PlannerEvent) {
+        setManualArchive(event, false)
+        if (event.done) setDone(event, false)
         statusText = "Restored"
     }
 
     fun toggleDone(event: PlannerEvent) {
-        val changed = event.copy(done = !event.done)
-        persistEvent(changed)
-        if (changed.done) {
+        val done = !event.done
+        setDone(event, done)
+        if (done) {
             if (!archivedView && selectedEventId == event.id) selectedEventId = null
-            showBalloon(BalloonKind.INFO, "Marked done", event.title, "Undo") {
-                persistEvent(event.copy(done = false))
-            }
+            showBalloon(BalloonKind.INFO, "Marked done", event.title, "Undo") { setDone(event, false) }
         }
     }
 
@@ -485,7 +554,10 @@ internal fun PlannerApp(
         showBalloon(BalloonKind.INFO, "Archived", event.title, "Undo") { setManualArchive(event, false) }
     }
 
-    fun performDelete(event: PlannerEvent) {
+    fun performDelete(shown: PlannerEvent) {
+        // The dialog may have been open while this phone's reminder was uploaded: act on what is
+        // stored now, so an uploaded reminder is deleted in the cloud too and does not come back.
+        val event = repository.find(shown.id) ?: shown
         if (selectedEventId == event.id) selectedEventId = null
         if (!event.remote) {
             AlarmScheduler.cancelEvent(appContext, event.id)
@@ -596,6 +668,63 @@ internal fun PlannerApp(
         if (event.isOccurrence && event.remote) scopeQuestion = event to true else pendingDelete = event
     }
 
+    /** Downloads the published build, verifies it and hands it to Android, which asks to confirm. */
+    fun installUpdate(release: AppRelease) {
+        if (!AppUpdater.canInstall(context)) {
+            // Coming back with the permission granted continues this install (see the resume effect).
+            AppUpdater.setPendingInstall(appContext, release)
+            showBalloon(
+                BalloonKind.INFO,
+                ALLOW_UPDATES_TITLE,
+                "Turn on \"Allow from this source\" for AI Planner, then come back here.",
+                "Settings",
+                sticky = true,
+            ) { runCatching { context.startActivity(AppUpdater.allowInstallsIntent(context)) } }
+            return
+        }
+        AppUpdater.clearPendingInstall(appContext)
+        if (updating) return
+        updating = true
+        statusText = "Downloading update..."
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { AppUpdater.install(appContext, BridgeApi.downloadRelease(appContext, release)) }
+            }
+            updating = false
+            result.onSuccess { statusText = "Installing update..." }
+                .onFailure { error ->
+                    statusText = "Update failed"
+                    showBalloon(BalloonKind.ERROR, "Couldn't update", error.message ?: "The update could not be downloaded.")
+                }
+        }
+    }
+
+    /** Asks the bridge for a newer build. [manual] (Help menu) also says when there is none. */
+    fun checkForUpdate(manual: Boolean) {
+        if (!bridgeConnected) {
+            if (manual) showBalloon(BalloonKind.INFO, "Not connected", "Connect to the cloud to get updates.")
+            return
+        }
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { BridgeApi.latestRelease(appContext) } }
+            AppUpdater.recordCheck(appContext)
+            result.onSuccess { release ->
+                when {
+                    release != null && AppUpdater.isNewer(appContext, release) -> showBalloon(
+                        BalloonKind.INFO,
+                        "Update available",
+                        "AI Planner ${release.versionName} is ready to install.",
+                        "Install",
+                        sticky = true,
+                    ) { installUpdate(release) }
+                    manual -> showBalloon(BalloonKind.INFO, "No update", "You have the latest version, ${appVersionName(context)}.")
+                }
+            }.onFailure { error ->
+                if (manual) showBalloon(BalloonKind.ERROR, "Couldn't check for updates", error.message ?: "The cloud could not be reached.")
+            }
+        }
+    }
+
     fun runSync(label: String, quiet: Boolean, action: (Context) -> Result<Int>, success: (Int) -> String) {
         if (syncing) return
         statusText = label
@@ -633,6 +762,20 @@ internal fun PlannerApp(
             nowMillis = System.currentTimeMillis()
             refresh()
         }
+        // Back from "Allow from this source" with the permission granted: carry on with that install.
+        val waiting = AppUpdater.pendingInstall(appContext)
+        if (waiting != null && AppUpdater.canInstall(context)) {
+            if (balloon?.title == ALLOW_UPDATES_TITLE) balloon = null
+            installUpdate(waiting)
+            return@LaunchedEffect
+        }
+        // An update Android refused is reported once; otherwise look for a newer build now and then.
+        val updateError = AppUpdater.takeLastError(appContext)
+        if (updateError != null) {
+            showBalloon(BalloonKind.ERROR, "Update not installed", updateError)
+        } else if (bridgeConnected && AppUpdater.dueForCheck(appContext)) {
+            checkForUpdate(manual = false)
+        }
     }
 
     // Observe the stores so FCM syncs, notification actions and outbox delivery update the open list.
@@ -657,6 +800,28 @@ internal fun PlannerApp(
         if (bridgeConnected) runSync("Syncing...", quiet = true, BridgeApi::sync) { "Synced" }
     }
 
+    // Kitchen is fetched when it is shown, when the app comes back and after pairing (each good
+    // fetch also sends the queued kitchen edits).
+    LaunchedEffect(kitchenOpen, resumeTick, bridgeConnected) {
+        if (kitchenOpen) kitchen.refresh()
+    }
+
+    // And on a kitchen_sync push, but only while Kitchen is on screen with the app in the foreground.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var foreground by remember { mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { source, _ ->
+            foreground = source.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    DisposableEffect(kitchenOpen, foreground) {
+        val listener: () -> Unit = { kitchen.refresh() }
+        if (kitchenOpen && foreground) KitchenSync.setLiveListener(listener)
+        onDispose { KitchenSync.clearLiveListener(listener) }
+    }
+
     LaunchedEffect(schoolCourses, selectedCourseKey) {
         if (selectedCourseKey != null && schoolCourses.none { it.key == selectedCourseKey }) selectCourse(null)
     }
@@ -671,6 +836,8 @@ internal fun PlannerApp(
 
     LaunchedEffect(balloon?.id) {
         val shown = balloon ?: return@LaunchedEffect
+        // An update prompt waits for the user: it timed out before the Install tap landed.
+        if (shown.sticky) return@LaunchedEffect
         delay(BALLOON_MILLIS)
         if (balloon?.id == shown.id) balloon = null
     }
@@ -747,6 +914,7 @@ internal fun PlannerApp(
                     parsed to stored
                 }
                 updated?.let(::refresh)
+                if (updated != null && bridgeConnected) BridgeSyncWorker.enqueueOutbox(appContext)
                 val count = result.events.size
                 showBalloon(
                     kind = if (count > 0 && result.warnings.isEmpty()) BalloonKind.INFO else BalloonKind.WARNING,
@@ -766,6 +934,8 @@ internal fun PlannerApp(
         }
     }
 
+    BackHandler(enabled = kitchenOpen) { showKitchen(false) }
+
     val menus = listOf(
         XpMenu("File") { dismiss ->
             XpMenuItem("New Reminder...", { dismiss(); openEditor(null) }, icon = XpIcons.New)
@@ -774,10 +944,17 @@ internal fun PlannerApp(
             XpMenuItem("Exit", { dismiss(); onExit() })
         },
         XpMenu("View") { dismiss ->
-            XpMenuItem("List", { dismiss(); changeCalendarMode(false) }, enabled = viewToggleEnabled, checked = !showCalendar, radio = true)
-            XpMenuItem("Calendar", { dismiss(); changeCalendarMode(true) }, enabled = viewToggleEnabled, checked = showCalendar, radio = true)
+            XpMenuItem("Reminders", { dismiss(); showKitchen(false) }, checked = !kitchenOpen, radio = true)
+            XpMenuItem("Kitchen", { dismiss(); showKitchen(true) }, checked = kitchenOpen, radio = true)
             XpMenuSeparator()
-            XpMenuItem("Find...", { dismiss(); searchActive = true }, icon = XpIcons.Find)
+            XpMenuItem("List", { dismiss(); changeCalendarMode(false) }, enabled = viewToggleEnabled && !kitchenOpen, checked = !showCalendar, radio = true)
+            XpMenuItem("Calendar", { dismiss(); changeCalendarMode(true) }, enabled = viewToggleEnabled && !kitchenOpen, checked = showCalendar, radio = true)
+            XpMenuSeparator()
+            if (kitchenOpen) {
+                XpMenuItem("Refresh Kitchen", { dismiss(); kitchen.refresh(manual = true) }, icon = XpIcons.Sync, enabled = bridgeConnected)
+            } else {
+                XpMenuItem("Find...", { dismiss(); searchActive = true }, icon = XpIcons.Find)
+            }
         },
         XpMenu("Tools") { dismiss ->
             XpMenuItem("Sync Now", { dismiss(); syncNow() }, icon = XpIcons.Sync, enabled = bridgeConnected && !syncing)
@@ -789,12 +966,22 @@ internal fun PlannerApp(
             XpMenuItem("Options...", { dismiss(); showOptions = true })
         },
         XpMenu("Help") { dismiss ->
-            XpMenuItem("About AI Calendar", { dismiss(); showAbout = true }, icon = XpIcons.Info)
+            XpMenuItem("Check for Updates...", { dismiss(); checkForUpdate(manual = true) }, icon = XpIcons.Sync, enabled = !updating)
+            XpMenuSeparator()
+            XpMenuItem("About AI Planner", { dismiss(); showAbout = true }, icon = XpIcons.Info)
         },
     )
 
     val shownCount = if (showCalendar) dayEvents.size else visibleEvents.size
-    val statusLine = statusText ?: buildString {
+    val kitchenSnapshot = kitchen.state.snapshot
+    val toBuy = kitchenSnapshot?.openItems?.size
+    val statusLine = statusText ?: if (kitchenOpen) {
+        when {
+            toBuy == null -> if (kitchen.state.loading) "Loading..." else "Kitchen"
+            toBuy == 0 -> "Nothing to buy"
+            else -> "$toBuy to buy"
+        }
+    } else buildString {
         append(shownCount)
         append(
             when {
@@ -823,20 +1010,51 @@ internal fun PlannerApp(
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
             Column(Modifier.fillMaxWidth().xpTitleBackground()) {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-                XpTitleBar("AI Calendar", icon = XpIcons.App, onMinimize = onMinimize, showMaximize = true, onClose = onExit)
+                XpTitleBar(
+                    if (kitchenOpen) "Kitchen - AI Planner" else "AI Planner",
+                    icon = if (kitchenOpen) XpIcons.Kitchen else XpIcons.App,
+                    onMinimize = onMinimize,
+                    showMaximize = true,
+                    onClose = onExit,
+                )
             }
-            XpMenuBar(menus)
-            XpTabStrip(
-                tabs = listOf(
-                    "Life (${lifeEvents.size})",
-                    "School (${schoolEvents.size})",
-                    "Deliveries (${deliveryEvents.size})",
-                    "All (${currentEvents.size})",
-                    "Archived",
-                ),
-                selectedIndex = plannerSection.ordinal,
-                onSelect = { selectSection(PlannerSection.entries[it]) },
+            // Kitchen sits on the menu bar's row, labeled, so it is found without opening a menu:
+            // a sixth tab does not fit beside the reminder tabs at phone width. The same button
+            // leads back to the reminders.
+            XpMenuBar(
+                menus,
+                trailing = {
+                    XpButton(
+                        if (kitchenOpen) "Reminders" else "Kitchen",
+                        onClick = { showKitchen(!kitchenOpen) },
+                        modifier = Modifier.padding(start = 6.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                        icon = if (kitchenOpen) XpIcons.App else XpIcons.Kitchen,
+                        minWidth = 0.dp,
+                        minHeight = 34.dp,
+                    )
+                },
             )
+            if (kitchenOpen) {
+                XpTabStrip(
+                    tabs = KitchenTab.entries.map { tab ->
+                        if (tab == KitchenTab.LIST && toBuy != null) "${tab.label} ($toBuy)" else tab.label
+                    },
+                    selectedIndex = kitchenTab.ordinal,
+                    onSelect = { selectKitchenTab(KitchenTab.entries[it]) },
+                )
+            } else {
+                XpTabStrip(
+                    tabs = listOf(
+                        "Life (${lifeEvents.size})",
+                        "School (${schoolEvents.size})",
+                        "Deliveries (${deliveryEvents.size})",
+                        "All (${currentEvents.size})",
+                        "Archived",
+                    ),
+                    selectedIndex = plannerSection.ordinal,
+                    onSelect = { selectSection(PlannerSection.entries[it]) },
+                )
+            }
             if (!notificationsReady) {
                 XpInfoBar("Notifications are off, so reminders cannot alert you. Tap to allow them.", XpIcons.Warning, onClick = ::requestNotifications)
             }
@@ -864,10 +1082,10 @@ internal fun PlannerApp(
                     },
                 )
             }
-            if (plannerSection == PlannerSection.SCHOOL && schoolCourses.isNotEmpty()) {
+            if (!kitchenOpen && plannerSection == PlannerSection.SCHOOL && schoolCourses.isNotEmpty()) {
                 ClassFilterRow(schoolCourses, selectedCourseKey, ::selectCourse)
             }
-            if (searchActive) {
+            if (searchActive && !kitchenOpen) {
                 FindRow(
                     query = searchQuery,
                     onQueryChange = { searchQuery = it },
@@ -879,7 +1097,19 @@ internal fun PlannerApp(
             }
 
             Box(Modifier.weight(1f).fillMaxWidth().background(XpColors.window)) {
-                ReminderList(
+                if (kitchenOpen) {
+                    KitchenPane(
+                        controller = kitchen,
+                        tab = kitchenTab,
+                        connected = bridgeConnected,
+                        today = today,
+                        nowMillis = nowMillis,
+                        onConnect = {
+                            connectError = null
+                            showBridgeSetup = true
+                        },
+                    )
+                } else ReminderList(
                     listState = listState,
                     entries = entries,
                     nowMillis = nowMillis,
@@ -968,12 +1198,15 @@ internal fun PlannerApp(
                 syncing = syncing,
                 trayIcon = trayIcon,
                 trayLabel = trayLabel,
+                kitchen = kitchenOpen,
+                kitchenRefreshEnabled = bridgeConnected && !kitchen.state.loading,
                 onNew = { openEditor(null) },
                 onToggleFind = {
                     if (searchActive) searchQuery = ""
                     searchActive = !searchActive
                 },
                 onToggleView = { changeCalendarMode(!calendarMode) },
+                onRefreshKitchen = { kitchen.refresh(manual = true) },
                 onOpenConnection = {
                     connectError = null
                     showBridgeSetup = true
@@ -981,13 +1214,19 @@ internal fun PlannerApp(
             )
         }
 
+        if (kitchenOpen) {
+            KitchenDinnerDialog(kitchen)
+            KitchenOnHandActions(kitchen)
+        }
+
         if (showEditor) {
             EventEditorDialog(
                 initial = editingEvent,
                 newDate = editorDate,
-                newDomain = when (plannerSection) {
-                    PlannerSection.SCHOOL -> EventDomain.SCHOOL
-                    PlannerSection.DELIVERIES -> EventDomain.DELIVERY
+                newDomain = when {
+                    kitchenOpen -> EventDomain.LIFE
+                    plannerSection == PlannerSection.SCHOOL -> EventDomain.SCHOOL
+                    plannerSection == PlannerSection.DELIVERIES -> EventDomain.DELIVERY
                     else -> EventDomain.LIFE
                 },
                 saveError = editorError,
@@ -1240,9 +1479,12 @@ private fun PlannerTaskbar(
     syncing: Boolean,
     trayIcon: ImageVector,
     trayLabel: String,
+    kitchen: Boolean,
+    kitchenRefreshEnabled: Boolean,
     onNew: () -> Unit,
     onToggleFind: () -> Unit,
     onToggleView: () -> Unit,
+    onRefreshKitchen: () -> Unit,
     onOpenConnection: () -> Unit,
 ) {
     // The spin lives here so each animation frame redraws only the taskbar.
@@ -1257,13 +1499,18 @@ private fun PlannerTaskbar(
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
             XpStartButton("New", onClick = onNew, icon = XpIcons.Sparkle)
             Spacer(Modifier.width(4.dp))
-            XpTaskbarIconButton(XpIcons.Find, label = "Find", onClick = onToggleFind, active = searchActive)
-            XpTaskbarIconButton(
-                if (showCalendar) XpIcons.ViewList else XpIcons.ViewCalendar,
-                label = if (showCalendar) "List view" else "Calendar view",
-                onClick = onToggleView,
-                enabled = viewToggleEnabled,
-            )
+            if (kitchen) {
+                // Find and the calendar belong to the reminders; Kitchen has Refresh instead.
+                XpTaskbarIconButton(XpIcons.Sync, label = "Refresh kitchen", onClick = onRefreshKitchen, enabled = kitchenRefreshEnabled)
+            } else {
+                XpTaskbarIconButton(XpIcons.Find, label = "Find", onClick = onToggleFind, active = searchActive)
+                XpTaskbarIconButton(
+                    if (showCalendar) XpIcons.ViewList else XpIcons.ViewCalendar,
+                    label = if (showCalendar) "List view" else "Calendar view",
+                    onClick = onToggleView,
+                    enabled = viewToggleEnabled,
+                )
+            }
             XpTaskbarDivider()
             Text(
                 statusLine,

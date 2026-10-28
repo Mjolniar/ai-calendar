@@ -3,14 +3,17 @@ param([switch]$NoLaunch)
 $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot 'AI.Calendar.Desktop.csproj'
 $publish = Join-Path $PSScriptRoot 'publish'
+# The app is shown as "AI Planner" (since 1.5.1). The exe, this folder, the settings folder and the
+# process name stay "AI Calendar" on purpose: a taskbar pin, the pairing and the checks below rely on them.
 $install = Join-Path $env:LOCALAPPDATA 'Programs\AI Calendar Desktop'
 $desktop = [Environment]::GetFolderPath('Desktop')
-$shortcutPath = Join-Path $desktop 'AI Calendar.lnk'
+$shortcutName = 'AI Planner.lnk'
+$oldShortcutName = 'AI Calendar.lnk'
 
 $installedExe = Join-Path $install 'AI Calendar.exe'
 $running = Get-Process -Name 'AI Calendar' -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and ($_.Path -ieq $installedExe) }
-if ($running) { throw 'AI Calendar is running. Quit it (File > Exit, or right-click its icon in the notification area and choose Exit), then run install.ps1 again.' }
+if ($running) { throw 'AI Planner is running. Quit it (File > Exit, or right-click its icon in the notification area and choose Exit), then run install.ps1 again.' }
 
 dotnet publish $project -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $publish
@@ -28,12 +31,29 @@ Get-ChildItem -LiteralPath $install -Filter '*.ico' -File | ForEach-Object {
 }
 
 $shell = New-Object -ComObject WScript.Shell
-$shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = Join-Path $install 'AI Calendar.exe'
-$shortcut.WorkingDirectory = $install
-$shortcut.IconLocation = "$(Join-Path $install 'AI Calendar.exe'),0"
-$shortcut.Description = 'AI Calendar desktop companion'
-$shortcut.Save()
+function Set-AppShortcut([string]$path) {
+    $shortcut = $shell.CreateShortcut($path)
+    $shortcut.TargetPath = Join-Path $install 'AI Calendar.exe'
+    $shortcut.WorkingDirectory = $install
+    $shortcut.IconLocation = "$(Join-Path $install 'AI Calendar.exe'),0"
+    $shortcut.Description = 'AI Planner desktop companion'
+    $shortcut.Save()
+}
+
+# Desktop: the shortcut under the new name; the one under the old name goes.
+Set-AppShortcut (Join-Path $desktop $shortcutName)
+$oldShortcut = Join-Path $desktop $oldShortcutName
+if (Test-Path -LiteralPath $oldShortcut) { Remove-Item -LiteralPath $oldShortcut -Force }
+
+# Start Menu: wherever there is a shortcut under the old name, the same under the new name instead.
+# (Taskbar pins live elsewhere and are left alone; they point at the exe, which keeps its name.)
+$startMenu = [Environment]::GetFolderPath('Programs')
+if ($startMenu -and (Test-Path -LiteralPath $startMenu)) {
+    Get-ChildItem -LiteralPath $startMenu -Filter $oldShortcutName -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        Set-AppShortcut (Join-Path $_.DirectoryName $shortcutName)
+        Remove-Item -LiteralPath $_.FullName -Force
+    }
+}
 
 # Explorer keeps icons in a cache; tell it they changed, or the taskbar and desktop show the old ones.
 Add-Type -Namespace AICalendarInstall -Name Shell -MemberDefinition @'

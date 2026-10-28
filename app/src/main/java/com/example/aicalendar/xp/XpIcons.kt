@@ -250,4 +250,18 @@ object XpIcons {
             addPath(addPathNodes("M11.35 10.2 H12.65 A0.5 0.5 0 0 1 13.15 10.7 V17.1 A0.5 0.5 0 0 1 12.65 17.6 H11.35 A0.5 0.5 0 0 1 10.85 17.1 V10.7 A0.5 0.5 0 0 1 11.35 10.2 Z"), fill = SolidColor(Color(0xFFFFFFFF)))
         }.build()
     }
+
+    val Kitchen: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+        ImageVector.Builder("XpKitchen", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(addPathNodes("M7.2 5.8 C6.3 4.8 8.1 3.9 7.2 2.6 M16.8 5.8 C15.9 4.8 17.7 3.9 16.8 2.6"), stroke = SolidColor(Color(0xFFFFFFFF)), strokeLineWidth = 2.6f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round, strokeAlpha = 0.7f)
+            addPath(addPathNodes("M7.2 5.8 C6.3 4.8 8.1 3.9 7.2 2.6 M16.8 5.8 C15.9 4.8 17.7 3.9 16.8 2.6"), stroke = SolidColor(Color(0xFF6F8DB8)), strokeLineWidth = 1.3f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(addPathNodes("M2.4 12.3 H3.8 A1.1 1.1 0 0 1 4.9 13.4 V13.5 A1.1 1.1 0 0 1 3.8 14.6 H2.4 A1.1 1.1 0 0 1 1.3 13.5 V13.4 A1.1 1.1 0 0 1 2.4 12.3 Z"), fill = Brush.linearGradient(0f to Color(0xFFA8A8A8), 1f to Color(0xFF4A4A4A), start = Offset(0f, 12.3f), end = Offset(0f, 14.6f)), stroke = SolidColor(Color(0xFF2E2E2E)), strokeLineWidth = 0.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(addPathNodes("M20.2 12.3 H21.6 A1.1 1.1 0 0 1 22.7 13.4 V13.5 A1.1 1.1 0 0 1 21.6 14.6 H20.2 A1.1 1.1 0 0 1 19.1 13.5 V13.4 A1.1 1.1 0 0 1 20.2 12.3 Z"), fill = Brush.linearGradient(0f to Color(0xFFA8A8A8), 1f to Color(0xFF4A4A4A), start = Offset(0f, 12.3f), end = Offset(0f, 14.6f)), stroke = SolidColor(Color(0xFF2E2E2E)), strokeLineWidth = 0.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(addPathNodes("M4 11 H20 V17.6 A2.6 2.6 0 0 1 17.4 20.2 H6.6 A2.6 2.6 0 0 1 4 17.6 Z"), fill = Brush.linearGradient(0f to Color(0xFFFF8A66), 0.55f to Color(0xFFE8452A), 1f to Color(0xFFB82410), start = Offset(0f, 11f), end = Offset(0f, 20.2f)), stroke = SolidColor(Color(0xFF7E1A0C)), strokeLineWidth = 1f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(addPathNodes("M6 13.2 V17.2"), stroke = SolidColor(Color(0xFFFFFFFF)), strokeLineWidth = 1.2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round, strokeAlpha = 0.55f)
+            addPath(addPathNodes("M4.15 9.7 H19.85 A1.05 1.05 0 0 1 20.9 10.75 V10.75 A1.05 1.05 0 0 1 19.85 11.8 H4.15 A1.05 1.05 0 0 1 3.1 10.75 V10.75 A1.05 1.05 0 0 1 4.15 9.7 Z"), fill = Brush.linearGradient(0f to Color(0xFFFFA088), 1f to Color(0xFFC92A14), start = Offset(0f, 9.7f), end = Offset(0f, 11.8f)), stroke = SolidColor(Color(0xFF7E1A0C)), strokeLineWidth = 0.9f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(addPathNodes("M4.7 9.8 C5.5 7.5 8.4 6.5 12 6.5 C15.6 6.5 18.5 7.5 19.3 9.8 Z"), fill = Brush.linearGradient(0f to Color(0xFFF8F9FB), 1f to Color(0xFFA3ACBA), start = Offset(0f, 6.5f), end = Offset(0f, 9.8f)), stroke = SolidColor(Color(0xFF4A5260)), strokeLineWidth = 0.9f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(addPathNodes("M11.5 4.8 H12.5 A1 1 0 0 1 13.5 5.8 V5.9 A1 1 0 0 1 12.5 6.9 H11.5 A1 1 0 0 1 10.5 5.9 V5.8 A1 1 0 0 1 11.5 4.8 Z"), fill = Brush.linearGradient(0f to Color(0xFF6A6A6A), 1f to Color(0xFF2A2A2A), start = Offset(0f, 4.8f), end = Offset(0f, 6.9f)), stroke = SolidColor(Color(0xFF1A1A1A)), strokeLineWidth = 0.6f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
 }

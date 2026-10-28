@@ -151,7 +151,8 @@ export class CanvasSyncService {
       })
       : { created: 0, updated: 0, unchanged: 0, notified: 0 };
     const archived = await this.calendar.setTaskItemsDone("canvas", completedKeys);
-    const routineMeetings = await this.calendar.archiveRoutineSchoolMeetings();
+    // Kept in the result for compatibility; the sweep that re-completed reminders is gone.
+    const routineMeetings = { updated: 0, notified: 0 };
 
     return {
       fetched: activeItems.length + completedItems.length,
@@ -305,6 +306,32 @@ function normalizeConfig(config: CanvasConfig): CanvasConfig {
   return { baseUrl, accessToken: config.accessToken.trim() };
 }
 
+/** Ungraded work that only looks like an assessment by its title. */
+const PRACTICE = /\b(surveys?|practice|pretests?|ungraded)\b/i;
+/** Named exams: they stay exams whatever else the title says, except when graded work is being corrected. */
+const EXAM_WORD = /\b(exams?|midterms?)\b/i;
+const CORRECTIONS = /\bcorrections?\b/i;
+/** "Test" and "Final" are weaker: they say exam only when nothing in the title says otherwise. */
+const WEAK_EXAM_WORD = /\b(tests?|finals?)\b/i;
+const NOT_AN_EXAM = /\b(reflections?|projects?|essays?|reviews?|readings?|papers?|drafts?|presentations?|reports?|your knowledge)\b/i;
+const QUIZ_WORD = /\bquiz(zes)?\b/i;
+/** A title-only "quiz" that is really about one: "Quiz reflection", "Quiz review sheet". */
+const ABOUT_A_QUIZ = /\b(reflections?|projects?|essays?|reviews?|readings?)\b/i;
+
+/**
+ * Exam (one-week warning) or quiz (three-day warning) or neither. Missing an assessment costs a
+ * warning, so the Canvas type wins over the title: a quiz Canvas calls a quiz stays one, whatever
+ * its title says, unless it is a practice quiz.
+ */
+export function classifyAssessment(title: string, type: string, submissionTypes?: string[]): "exam" | "quiz" | null {
+  if (PRACTICE.test(title)) return null;
+  if (EXAM_WORD.test(title) && !CORRECTIONS.test(title)) return "exam";
+  if (WEAK_EXAM_WORD.test(title) && !NOT_AN_EXAM.test(title) && !CORRECTIONS.test(title)) return "exam";
+  const canvasQuiz = type === "quiz" || submissionTypes?.some((value) => value.toLowerCase() === "online_quiz") === true;
+  if (canvasQuiz || (QUIZ_WORD.test(title) && !ABOUT_A_QUIZ.test(title))) return "quiz";
+  return null;
+}
+
 function toReminder(
   item: CanvasPlannerItem,
   courses: Map<string, CanvasCourse>,
@@ -328,11 +355,9 @@ function toReminder(
   if (!key || !INCLUDED_TYPES.has(type) || !title || !startAt || item.detail?.workflow_state === "deleted" || item.plannable?.workflow_state === "deleted") return null;
   const submissionTypes = firstArray(item.detail?.submission_types, nestedAssignment?.submission_types, item.plannable?.submission_types)
     ?? existing?.submissionTypes;
-  const nonAssessment = /\b(survey|reflection|project|essay|review|practice|reading)\b|\bfinal\s+paper\b/i.test(title);
-  const exam = !nonAssessment && /\b(exams?|finals?|midterms?|tests?)\b/i.test(title);
-  const quiz = !nonAssessment && (/\bquizzes?\b|\bquiz\b/i.test(title)
-    || type === "quiz"
-    || submissionTypes?.some((submissionType) => submissionType.toLowerCase() === "online_quiz") === true);
+  const assessment = classifyAssessment(title, type, submissionTypes);
+  const exam = assessment === "exam";
+  const quiz = assessment === "quiz";
   const critical = exam || quiz;
   const sourceUrl = item.html_url ?? item.detail?.html_url ?? item.plannable?.html_url;
   const notes = item.detail || !existing

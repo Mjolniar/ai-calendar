@@ -13,8 +13,10 @@ class CalendarMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        if (message.data["type"] == "calendar_sync") {
-            BridgeSyncWorker.enqueueSync(applicationContext)
+        when (message.data["type"]) {
+            "calendar_sync" -> BridgeSyncWorker.enqueueSync(applicationContext)
+            // Only refetches when Kitchen is on screen in the foreground; no job, no notification.
+            "kitchen_sync" -> KitchenSync.signal()
         }
     }
 

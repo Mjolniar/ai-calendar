@@ -36,10 +36,14 @@ function mailbox(opts: { grantMailboxSettings?: boolean; rejectFullScope?: boole
     if (url.includes("/mailFolders/deleteditems?")) return json({ id: DELETED_ID });
     const wk = url.match(/\/mailFolders\/(msgfolderroot|inbox|sentitems|drafts|junkemail|archive|outbox)\?\$select=id$/);
     if (wk) return json({ id: `WK-${wk[1]}` });
-    const one = url.match(/\/mailFolders\/([^/?]+)\?\$select=id,displayName/);
+    const one = url.match(/\/mailFolders\/([^/?]+)\?\$select=id,(displayName|parentFolderId)/);
     if (one && method === "GET") {
-      const f = extra.find((x) => x.id === one[1]);
-      return f ? json(f) : json({ error: { code: "ErrorItemNotFound", message: "x" } }, 404);
+      // Every folder here sits under the Inbox or the mailbox root, never under Deleted Items.
+      if (one[1].startsWith("WK-")) return json({ id: one[1], parentFolderId: "WK-msgfolderroot" });
+      const f = extra.find((x) => x.id === one[1]) ?? folders.find((x) => x.id === one[1]);
+      if (f) return json({ parentFolderId: "WK-inbox", ...f });
+      // Ids the tests use without listing them first are ordinary Inbox subfolders.
+      return one[2] === "parentFolderId" ? json({ id: one[1], parentFolderId: "WK-inbox" }) : json({ error: { code: "ErrorItemNotFound", message: "x" } }, 404);
     }
     if (method === "DELETE" && url.includes("/mailFolders/")) { deleted.push(url.split("/mailFolders/")[1]); return new Response(null, { status: 204 }); }
     if (url.includes("/mailFolders/inbox/childFolders") && method === "GET") return json({ value: folders });

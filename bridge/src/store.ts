@@ -13,6 +13,8 @@ export interface CalendarStore {
    */
   mutateEvent(id: string, mutate: (current: ReminderEvent | null) => ReminderEvent | null): Promise<EventMutation>;
   deleteEvent(id: string): Promise<boolean>;
+  /** Deletes the event only if [keep] says no about the stored copy, checked atomically. */
+  deleteEventUnless(id: string, keep: (current: ReminderEvent) => boolean): Promise<boolean>;
   /** Every series, deleted ones (tombstones) included. */
   listSeries(): Promise<ReminderSeries[]>;
   getSeries(id: string): Promise<ReminderSeries | null>;
@@ -40,6 +42,12 @@ export interface CalendarStore {
   takeKv(key: string): Promise<Record<string, unknown> | null>;
   /** Shallow-merge top-level fields into a key-value document (creating it when absent). */
   mergeKv(key: string, fields: Record<string, unknown>): Promise<void>;
+  /**
+   * Atomic read-modify-write of one key-value document, with the same contract as `mutateEvent`:
+   * `mutate` gets a copy of the stored value (or null) and returns the value to write, or null to
+   * leave it unchanged. It must be pure; Firestore may call it more than once.
+   */
+  mutateKv<T>(key: string, mutate: (current: Record<string, unknown> | null) => { value: Record<string, unknown> | null; result: T }): Promise<T>;
 }
 
 export type EventMutation = { before: ReminderEvent | null; after: ReminderEvent | null };
@@ -78,6 +86,14 @@ export class MemoryCalendarStore implements CalendarStore {
     this.kv.set(key, { ...(this.kv.get(key) ?? {}), ...fields });
   }
 
+  async mutateKv<T>(key: string, mutate: (current: Record<string, unknown> | null) => { value: Record<string, unknown> | null; result: T }): Promise<T> {
+    // Synchronous read-modify-write: atomic on the single-threaded event loop.
+    const current = this.kv.get(key);
+    const { value, result } = mutate(current ? structuredClone(current) : null);
+    if (value) this.kv.set(key, value);
+    return result;
+  }
+
   async listEvents(includeDone = false): Promise<ReminderEvent[]> {
     return [...this.events.values()]
       .filter((event) => includeDone || !event.done)
@@ -105,6 +121,12 @@ export class MemoryCalendarStore implements CalendarStore {
   }
 
   async deleteEvent(id: string): Promise<boolean> {
+    return this.events.delete(id);
+  }
+
+  async deleteEventUnless(id: string, keep: (current: ReminderEvent) => boolean): Promise<boolean> {
+    const current = this.events.get(id);
+    if (!current || keep(structuredClone(current))) return false;
     return this.events.delete(id);
   }
 
@@ -203,6 +225,17 @@ export class FirestoreCalendarStore implements CalendarStore {
     await this.kvRef(key).set(fields, { merge: true });
   }
 
+  async mutateKv<T>(key: string, mutate: (current: Record<string, unknown> | null) => { value: Record<string, unknown> | null; result: T }): Promise<T> {
+    const ref = this.kvRef(key);
+    return this.db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      const current = snapshot.exists ? (snapshot.data() as Record<string, unknown>) : null;
+      const { value, result } = mutate(current ? structuredClone(current) : null);
+      if (value) transaction.set(ref, stripUndefined(value));
+      return result;
+    });
+  }
+
   async takeKv(key: string): Promise<Record<string, unknown> | null> {
     const ref = this.kvRef(key);
     return this.db.runTransaction(async (transaction) => {
@@ -255,6 +288,16 @@ export class FirestoreCalendarStore implements CalendarStore {
     if (!snapshot.exists) return false;
     await ref.delete();
     return true;
+  }
+
+  async deleteEventUnless(id: string, keep: (current: ReminderEvent) => boolean): Promise<boolean> {
+    const ref = this.db.collection("events").doc(id);
+    return this.db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists || keep(snapshot.data() as ReminderEvent)) return false;
+      transaction.delete(ref);
+      return true;
+    });
   }
 
   async listSeries(): Promise<ReminderSeries[]> {

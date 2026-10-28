@@ -5,12 +5,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.hasSetTextAction
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -69,11 +71,14 @@ abstract class XpShotsBase(private val dark: Boolean) {
         // The phone grants exact alarms at install (USE_EXACT_ALARM); mirror that here.
         org.robolectric.shadows.ShadowAlarmManager.setCanScheduleExactAlarms(true)
         XpAppearance.dark = dark
+        BridgeApi.kitchen = KitchenSample.server()
     }
 
     @After
     fun tearDown() {
         XpAppearance.dark = false
+        BridgeApi.release = null
+        BridgeApi.downloads.clear()
     }
 
     private fun at(days: Long, hour: Int, minute: Int = 0): Long =
@@ -133,7 +138,13 @@ abstract class XpShotsBase(private val dark: Boolean) {
         )
     }
 
-    private fun launch(connected: Boolean = true, events: List<PlannerEvent> = sample(), section: String? = null, issue: String? = null) {
+    private fun launch(
+        connected: Boolean = true,
+        events: List<PlannerEvent> = sample(),
+        section: String? = null,
+        issue: String? = null,
+        kitchen: KitchenTab? = null,
+    ) {
         EventRepository(context).saveEvents(events)
         if (connected) {
             BridgeSettings(context).saveConfig(BridgeConfig("https://example.invalid/api", "p", "a", "k", "s"))
@@ -141,6 +152,10 @@ abstract class XpShotsBase(private val dark: Boolean) {
         }
         if (issue != null) PendingChangeStore(context).recordIssue(issue)
         if (section != null) context.getSharedPreferences("planner_view", Context.MODE_PRIVATE).edit().putString("section", section).commit()
+        if (kitchen != null) {
+            context.getSharedPreferences("planner_view", Context.MODE_PRIVATE).edit()
+                .putBoolean("kitchen", true).putString("kitchen_tab", kitchen.name).commit()
+        }
         rule.setContent {
             XpTheme {
                 CompositionLocalProvider(LocalXpInlineDialogs provides true) {
@@ -159,6 +174,194 @@ abstract class XpShotsBase(private val dark: Boolean) {
     private fun screenShot(name: String) {
         rule.waitForIdle()
         captureScreenRoboImage("$dir/$name.png", options)
+    }
+
+    /** Kitchen is fetched off the main thread; wait for what it shows. */
+    private fun waitForText(text: String, substring: Boolean = false) {
+        rule.waitUntil(5_000) {
+            rule.waitForIdle()
+            rule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test
+    fun kitchenWeek() {
+        launch(kitchen = KitchenTab.WEEK)
+        waitForText("Tonight")
+        shot("39-kitchen-week")
+        rule.onNodeWithText("About this week").performScrollTo()
+        shot("39b-kitchen-week-end")
+    }
+
+    @Test
+    fun kitchenDinner() {
+        launch(kitchen = KitchenTab.WEEK)
+        waitForText("Tonight")
+        rule.onNodeWithText("Oven-baked salmon").performClick()
+        waitForText("How did it go?")
+        shot("40-kitchen-dinner")
+        // The dialog is drawn last; rows behind it can carry the same words.
+        rule.onAllNodesWithText("Loved it").onLast().performScrollTo().performClick()
+        rule.onAllNodesWithText("Cooked").onLast().performClick()
+        shot("41-kitchen-dinner-rated")
+    }
+
+    @Test
+    fun kitchenLeftovers() {
+        launch(kitchen = KitchenTab.WEEK)
+        waitForText("Tonight")
+        rule.onNodeWithText("Leftover chili").performScrollTo().performClick()
+        waitForText("How did it go?")
+        shot("41b-kitchen-leftovers")
+    }
+
+    @Test
+    fun kitchenList() {
+        launch(kitchen = KitchenTab.LIST)
+        waitForText("Aluminum foil")
+        shot("42-kitchen-list")
+    }
+
+    @Test
+    fun kitchenOnHand() {
+        launch(kitchen = KitchenTab.PANTRY)
+        waitForText("Your corrections")
+        shot("43-kitchen-on-hand")
+        rule.onNode(androidx.compose.ui.test.hasScrollToKeyAction()).performScrollToKey("estimate-header")
+        shot("43b-kitchen-on-hand-estimate")
+        val onions = BridgeApi.kitchen.pantry.first { it.getString("name") == "Onions" }.getString("id")
+        rule.onNode(androidx.compose.ui.test.hasScrollToKeyAction()).performScrollToKey("estimate-$onions")
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Onions: Running low").performClick()
+        waitForText("We're out")
+        shot("44-kitchen-on-hand-actions")
+    }
+
+    @Test
+    fun kitchenOnHandFiltered() {
+        launch(kitchen = KitchenTab.PANTRY)
+        waitForText("Your corrections")
+        rule.onNodeWithText("Show all (4)").performClick()
+        rule.onNode(androidx.compose.ui.test.hasScrollToKeyAction()).performScrollToKey("estimate-header")
+        rule.onNodeWithText("Running low & out only").performClick()
+        shot("43c-kitchen-on-hand-low-and-out")
+    }
+
+    @Test
+    fun kitchenTellClaudeQueued() {
+        launch(kitchen = KitchenTab.PANTRY)
+        waitForText("Your corrections")
+        BridgeApi.kitchen.offline = true
+        rule.onNode(hasSetTextAction()).performTextInput("Out of coffee filters")
+        rule.onNodeWithText("Send").performClick()
+        waitForText("Not sent yet")
+        shot("56-kitchen-tell-claude-queued")
+    }
+
+    @Test
+    fun kitchenSomethingElse() {
+        launch(kitchen = KitchenTab.PANTRY)
+        waitForText("Your corrections")
+        rule.onNodeWithContentDescription("Diced tomatoes: Running low").performClick()
+        rule.onNodeWithText("Something else\u2026").performClick()
+        rule.onNode(hasSetTextAction()).performTextInput("3 cans in the garage")
+        shot("57-kitchen-something-else")
+    }
+
+    @Test
+    fun kitchenNotConnected() {
+        launch(connected = false, kitchen = KitchenTab.WEEK)
+        waitForText(KITCHEN_OFFLINE)
+        shot("45-kitchen-not-connected")
+    }
+
+    @Test
+    fun kitchenOfflineWithData() {
+        launch(kitchen = KitchenTab.LIST)
+        waitForText("Aluminum foil")
+        BridgeApi.kitchen.offline = true
+        // Refresh until the failed fetch shows the bar (a click while a fetch runs is folded into it).
+        rule.waitUntil(5_000) {
+            rule.onNodeWithContentDescription("Refresh kitchen").performClick()
+            rule.waitForIdle()
+            rule.onAllNodesWithText("Offline: showing", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        shot("45b-kitchen-offline-bar")
+        // Edits made now are kept on the phone and shown at once.
+        rule.onNodeWithContentDescription("Tick off Dish soap").performClick()
+        rule.onNode(hasSetTextAction()).performTextInput("Lemons")
+        rule.onNodeWithText("Add").performClick()
+        waitForText("2 changes will be sent", substring = true)
+        shot("45c-kitchen-offline-queued")
+    }
+
+    @Test
+    fun updateBalloons() {
+        BridgeApi.release = AppRelease(30, "0.18.0", "a".repeat(64), 15_000_000)
+        launch()
+        waitForText("Update available")
+        shot("55-update-available")
+        rule.onNodeWithText("Install").performClick()
+        waitForText("Allow updates first")
+        shot("55b-update-allow")
+    }
+
+    @Test
+    fun kitchenNoPlan() {
+        BridgeApi.kitchen.week = null
+        launch(kitchen = KitchenTab.WEEK)
+        waitForText("No meal plan yet.")
+        shot("46-kitchen-no-plan")
+    }
+
+    @Test
+    fun kitchenMenuView() {
+        launch(kitchen = KitchenTab.WEEK)
+        waitForText("Tonight")
+        rule.onNodeWithText("View").performClick()
+        screenShot("47-kitchen-menu-view")
+    }
+
+    @Test
+    fun kitchenLargeText() {
+        EventRepository(context).saveEvents(sample())
+        BridgeSettings(context).saveConfig(BridgeConfig("https://example.invalid/api", "p", "a", "k", "s"))
+        BridgeSettings(context).saveDeviceToken("token")
+        context.getSharedPreferences("planner_view", Context.MODE_PRIVATE).edit()
+            .putBoolean("kitchen", true).putString("kitchen_tab", KitchenTab.LIST.name).commit()
+        rule.setContent {
+            val base = androidx.compose.ui.platform.LocalDensity.current
+            CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density, fontScale = 1.3f),
+                LocalXpInlineDialogs provides true,
+            ) {
+                XpTheme { PlannerApp(resumeTick = 1, openEventId = null, onOpenEventHandled = {}, onMinimize = {}, onExit = {}) }
+            }
+        }
+        waitForText("Aluminum foil")
+        shot("48-kitchen-large-text")
+        rule.onNodeWithText("On hand").performClick()
+        waitForText("Your corrections")
+        shot("48b-kitchen-large-text-on-hand")
+    }
+
+    /** The narrower household phone. */
+    @Test
+    @Config(qualifiers = "w384dp-h832dp-420dpi")
+    fun kitchenNarrow() {
+        launch(kitchen = KitchenTab.LIST)
+        waitForText("Aluminum foil")
+        shot("49-kitchen-list-384dp")
+        rule.onNodeWithText("This week").performClick()
+        waitForText("Tonight")
+        shot("50-kitchen-week-384dp")
+        rule.onNodeWithText("On hand").performClick()
+        waitForText("Your corrections")
+        shot("50b-kitchen-on-hand-384dp")
+        rule.onNodeWithText("Reminders").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Kitchen").assertIsDisplayed()
+        shot("51-life-384dp")
     }
 
     @Test
@@ -399,7 +602,7 @@ abstract class XpShotsBase(private val dark: Boolean) {
     fun iconSheet() {
         val icons = with(com.example.aicalendar.xp.XpIcons) {
             listOf(App, New, ViewCalendar, ViewList, Find, Sync, Cloud, CloudOk, CloudOff, CloudWarn, Import, School, Bell,
-                Check, Delete, Edit, Archive, Restore, OpenLink, Clock, Warning, Error, Sparkle, Info, Repeat)
+                Check, Delete, Edit, Archive, Restore, OpenLink, Clock, Warning, Error, Sparkle, Info, Repeat, Kitchen)
         }
         rule.setContent {
             XpTheme {
@@ -437,7 +640,7 @@ abstract class XpShotsBase(private val dark: Boolean) {
         launch()
         rule.onNodeWithText("Help").performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("About AI Calendar").performClick()
+        rule.onNodeWithText("About AI Planner").performClick()
         shot("19-about")
     }
     @Test

@@ -32,6 +32,23 @@ object BridgeApi {
     }
     fun syncCanvas(context: Context): Result<Int> = sync(context)
 
+    /** Done and not done for cloud reminders, recorded for the flows to check. */
+    val doneCalls = mutableListOf<Pair<String, Boolean>>()
+    fun setRemoteDone(context: Context, event: PlannerEvent, done: Boolean): RemoteWriteOutcome {
+        doneCalls += event.id to done
+        EventRepository(context).markDone(event.id, done)
+        return RemoteWriteOutcome.Saved
+    }
+
+    /** The build the stand-in bridge offers, and the downloads the UI asked for. */
+    var release: AppRelease? = null
+    val downloads = mutableListOf<AppRelease>()
+    fun latestRelease(context: Context): AppRelease? = release
+    fun downloadRelease(context: Context, release: AppRelease): java.io.File {
+        downloads += release
+        throw java.io.IOException("No updates in the harness")
+    }
+
     /** What the UI asked the bridge to do with a series, for the flows to check. */
     data class SeriesCall(val op: PendingOp, val seriesId: String, val body: JSONObject?, val deleteFrom: String?)
     val seriesCalls = mutableListOf<SeriesCall>()
@@ -41,6 +58,10 @@ object BridgeApi {
         if (op == PendingOp.SERIES_DELETE) EventRepository(context).removeSeriesOccurrences(seriesId, deleteFrom)
         return RemoteWriteOutcome.Saved
     }
+
+    /** The kitchen routes, answered by an in-memory stand-in for the bridge (FakeKitchen.kt). */
+    var kitchen = FakeKitchenServer()
+    fun kitchenClient(context: Context): KitchenClient = KitchenClient { method, path, body -> kitchen.handle(method, path, body) }
 }
 
 class BridgeSyncWorker {
@@ -53,7 +74,7 @@ class BridgeSyncWorker {
 }
 
 enum class PendingOp {
-    MARK_DONE, UPDATE, DELETE, SERIES_CREATE, SERIES_UPDATE, SERIES_DELETE;
+    CREATE, MARK_DONE, MARK_UNDONE, UPDATE, DELETE, SERIES_CREATE, SERIES_UPDATE, SERIES_DELETE;
 
     val isSeries: Boolean get() = this == SERIES_CREATE || this == SERIES_UPDATE || this == SERIES_DELETE
 }

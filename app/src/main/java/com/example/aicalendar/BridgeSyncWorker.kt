@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit
  * - periodic recovery sync (every 6 hours; the class name is kept so the existing schedule survives),
  * - FCM-triggered sync,
  * - outbox delivery of phone changes (Done / edits / deletes made offline),
- * - FCM installation-id updates.
+ * - FCM installation-id updates,
+ * - then, after a successful run, the kitchen's queued edits (KitchenSync; its failures are ignored here).
  */
 class BridgeSyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -45,6 +46,10 @@ class BridgeSyncWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 OutboxOutcome.DELIVERED -> BridgeApi.sync(context)
             }
             else -> BridgeApi.sync(context)
+        }
+        // Then the kitchen's queued edits, after the reminders and walled off from their result.
+        if (outcome.isSuccess && inputData.getString(KEY_MODE) != MODE_INSTALLATION) {
+            KitchenSync.sendFromWorker(context)
         }
         outcome.fold(
             onSuccess = { Result.success() },

@@ -1,0 +1,465 @@
+<UserControl x:Class="AICalendar.Desktop.KitchenView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:AICalendar.Desktop">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="Show" />
+
+        <!-- The row templates draw everything; captions and the week's boxes cannot be selected. -->
+        <Style x:Key="Kitchen.Item" TargetType="{x:Type ListBoxItem}" BasedOn="{StaticResource Xp.PlainListItem}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Selectable}" Value="False">
+                    <Setter Property="IsEnabled" Value="False" />
+                    <Setter Property="Focusable" Value="False" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- A caption inside a part ("Ingredients", "How did it go?"), with the fading rule. -->
+        <DataTemplate x:Key="Kitchen.Caption">
+            <StackPanel Margin="0,18,0,7">
+                <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="{DynamicResource Xp.HeaderText}" />
+                <Border Height="2" Margin="0,3,0,0" Background="{DynamicResource Xp.HeaderRule}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- "To buy (3)", "Tonight", "Fridge & counter (5)": like the reminder list's groups. -->
+        <DataTemplate DataType="{x:Type local:KitchenHeaderRow}">
+            <StackPanel Margin="10,11,14,4">
+                <DockPanel>
+                    <TextBlock Text="{Binding Label}" FontWeight="Bold" Foreground="{DynamicResource Xp.HeaderText}" />
+                    <TextBlock Text="{Binding Detail}" Margin="6,0,0,0" FontSize="12" VerticalAlignment="Bottom"
+                               Foreground="{DynamicResource Xp.TextDim}" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+                <Border Height="2" Margin="0,3,0,0" Background="{DynamicResource Xp.HeaderRule}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- A dinner in the week list: the day on the left, the dinner and how it went beside it. -->
+        <DataTemplate DataType="{x:Type local:MealDayRow}">
+            <StackPanel>
+                <Grid x:Name="Row" MinHeight="44" Background="Transparent">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="12,6,0,6" VerticalAlignment="Center">
+                        <TextBlock x:Name="DayName" Text="{Binding DayName}" FontSize="12" FontWeight="Bold" />
+                        <TextBlock x:Name="DayDate" Text="{Binding DayDate}" FontSize="11.5" Foreground="{DynamicResource Xp.TextDim}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="2,6,12,7" VerticalAlignment="Center">
+                        <TextBlock x:Name="Dinner" local:KitchenView.RichText="{Binding Dinner}" FontSize="14"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="Secondary" Text="{Binding Secondary}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource Xp.TextDim}" />
+                    </StackPanel>
+                </Grid>
+                <Border Height="1" Background="{DynamicResource Xp.Divider}" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Xp.RowHover}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Xp.Highlight}" />
+                    <Setter TargetName="DayName" Property="Foreground" Value="{DynamicResource Xp.HighlightText}" />
+                    <Setter TargetName="DayDate" Property="Foreground" Value="{DynamicResource Xp.HighlightTextDim}" />
+                    <Setter TargetName="Dinner" Property="Foreground" Value="{DynamicResource Xp.HighlightText}" />
+                    <Setter TargetName="Secondary" Property="Foreground" Value="{DynamicResource Xp.HighlightTextDim}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- The items of one of the week's boxes. -->
+        <DataTemplate DataType="{x:Type local:MealBoxRow}">
+            <TextBlock local:KitchenView.RichText="{Binding Text}" Margin="14,2,14,10" FontSize="12.5" TextWrapping="Wrap" />
+        </DataTemplate>
+
+        <!-- One line of the shopping list: tick it when bought, x to remove it. -->
+        <DataTemplate DataType="{x:Type local:ShoppingRow}">
+            <StackPanel>
+                <Grid x:Name="Row" MinHeight="40" Background="Transparent">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <CheckBox Margin="14,0,11,0" VerticalAlignment="Center" Click="ItemTick_Click"
+                              IsChecked="{Binding IsGot, Mode=OneWay}" ToolTip="{Binding TickToolTip}" />
+                    <StackPanel Grid.Column="1" Margin="0,5,0,6" VerticalAlignment="Center">
+                        <TextBlock x:Name="Name" Text="{Binding Name}" FontSize="14" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="Detail" Text="{Binding Detail}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource Xp.TextDim}" Visibility="{Binding HasDetail, Converter={StaticResource Show}}" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Style="{StaticResource Xp.DismissButton}" Margin="10,0,12,0" VerticalAlignment="Center"
+                            ToolTip="Remove from the list" Click="ItemRemove_Click" />
+                </Grid>
+                <Border Height="1" Background="{DynamicResource Xp.Divider}" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsGot}" Value="True">
+                    <Setter TargetName="Name" Property="TextDecorations" Value="Strikethrough" />
+                    <Setter TargetName="Name" Property="Foreground" Value="{DynamicResource Xp.TextDim}" />
+                </DataTrigger>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Xp.RowHover}" />
+                </Trigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!--
+          One thing in Claude's estimate: the name, why Claude thinks so, and a chip in plain words
+          (Have, Running low, Probably out) in the palette's good, warning and critical colors.
+          A click selects it and shows the corrections; another click closes it.
+        -->
+        <DataTemplate DataType="{x:Type local:EstimateRow}">
+            <StackPanel>
+                <Grid x:Name="Row" MinHeight="38" Background="Transparent" Cursor="Hand" MouseLeftButtonUp="EstimateRow_Click">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="16,5,0,6" VerticalAlignment="Center">
+                        <TextBlock x:Name="Name" Text="{Binding Name}" FontSize="14" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="Basis" Text="{Binding Basis}" FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource Xp.TextDim}" Visibility="{Binding HasBasis, Converter={StaticResource Show}}" />
+                    </StackPanel>
+                    <Border x:Name="Chip" Grid.Column="1" Margin="12,0,16,0" VerticalAlignment="Center" CornerRadius="9" Padding="7,1,9,2"
+                            BorderThickness="1" Background="{DynamicResource Xp.Window}" BorderBrush="{DynamicResource Xp.CheckGreen}">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="Dot" Width="7" Height="7" Margin="0,1,5,0" VerticalAlignment="Center"
+                                     Fill="{DynamicResource Xp.CheckGreen}" />
+                            <TextBlock x:Name="ChipText" Text="{Binding Chip}" FontSize="12" Foreground="{DynamicResource Xp.Text}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+                <Border x:Name="Actions" Visibility="Collapsed" Background="{DynamicResource Xp.FaceLight}" Padding="16,7,16,9">
+                    <WrapPanel>
+                        <Button x:Name="OutButton" Content="We're out" Margin="0,0,8,0" Click="WeAreOut_Click"
+                                ToolTip="Tell Claude it's gone. It goes on the shopping list." />
+                        <Button Content="We have it" Margin="0,0,8,0" Click="WeHaveIt_Click" ToolTip="Tell Claude there is some." />
+                        <Button Content="Something else…" Click="SomethingElse_Click" ToolTip="Write Claude a note about it." />
+                    </WrapPanel>
+                </Border>
+                <Border Height="1" Background="{DynamicResource Xp.Divider}" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsLow}" Value="True">
+                    <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Xp.TagFill}" />
+                    <Setter TargetName="Chip" Property="BorderBrush" Value="{DynamicResource Xp.TagBorder}" />
+                    <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource Xp.TagBorder}" />
+                    <Setter TargetName="ChipText" Property="Foreground" Value="{DynamicResource Xp.TagText}" />
+                    <Setter TargetName="ChipText" Property="FontWeight" Value="Bold" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsOut}" Value="True">
+                    <Setter TargetName="Chip" Property="BorderBrush" Value="{DynamicResource Xp.ErrorText}" />
+                    <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource Xp.ErrorText}" />
+                    <Setter TargetName="ChipText" Property="Foreground" Value="{DynamicResource Xp.ErrorText}" />
+                    <Setter TargetName="ChipText" Property="FontWeight" Value="Bold" />
+                </DataTrigger>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Xp.RowHover}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Xp.Highlight}" />
+                    <Setter TargetName="Name" Property="Foreground" Value="{DynamicResource Xp.HighlightText}" />
+                    <Setter TargetName="Basis" Property="Foreground" Value="{DynamicResource Xp.HighlightTextDim}" />
+                    <Setter TargetName="Actions" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- A correction: what was said, Claude's answer or "Waiting for Claude", and who and when. -->
+        <DataTemplate DataType="{x:Type local:CorrectionRow}">
+            <StackPanel>
+                <Grid MinHeight="36">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Image x:Name="Mark" Width="16" Height="16" Margin="16,7,8,0" VerticalAlignment="Top" Source="{StaticResource Icon.Check}" />
+                    <StackPanel Grid.Column="1" Margin="0,5,0,6">
+                        <TextBlock Text="{Binding Said}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="Answer" local:KitchenView.RichText="{Binding Answer}" Margin="0,1,0,0" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Byline}" Margin="0,1,0,0" FontSize="11" Foreground="{DynamicResource Xp.TextDim}" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Style="{StaticResource Xp.LinkButton}" Content="Withdraw" Margin="10,6,16,0" VerticalAlignment="Top"
+                            Click="Withdraw_Click" ToolTip="Take it back before Claude gets to it"
+                            Visibility="{Binding IsOpen, Converter={StaticResource Show}}" />
+                </Grid>
+                <Border Height="1" Background="{DynamicResource Xp.Divider}" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsOpen}" Value="True">
+                    <Setter TargetName="Mark" Property="Source" Value="{StaticResource Icon.Clock}" />
+                    <Setter TargetName="Answer" Property="Foreground" Value="{DynamicResource Xp.TextDim}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="dismissed">
+                    <Setter TargetName="Mark" Property="Source" Value="{StaticResource Icon.Info}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- "Show all 7" under the corrections. -->
+        <DataTemplate DataType="{x:Type local:ShowAllRow}">
+            <Button Style="{StaticResource Xp.LinkButton}" Content="{Binding Label}" Margin="16,6,0,8" HorizontalAlignment="Left"
+                    Click="ShowAll_Click" />
+        </DataTemplate>
+
+        <!-- A line of plain text in a list. -->
+        <DataTemplate DataType="{x:Type local:KitchenNoteRow}">
+            <TextBlock Text="{Binding Text}" Margin="18,12,18,12" TextWrapping="Wrap" Foreground="{DynamicResource Xp.TextDim}" />
+        </DataTemplate>
+
+        <!-- A numbered step of a recipe. -->
+        <DataTemplate DataType="{x:Type local:StepRow}">
+            <Grid Margin="0,0,0,7">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="26" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Number}" FontWeight="Bold" Foreground="{DynamicResource Xp.TextDim}" />
+                <TextBlock Grid.Column="1" local:KitchenView.RichText="{Binding Text}" TextWrapping="Wrap" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <DockPanel Background="{DynamicResource Xp.Window}">
+        <!-- The three parts, and Refresh -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource Xp.Face}" BorderBrush="{DynamicResource Xp.Shadow}"
+                BorderThickness="0,0,0,1" Padding="6,3,8,3">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="UpdatedText" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12"
+                               Foreground="{DynamicResource Xp.TextDim}" />
+                    <Button x:Name="RefreshButton" Style="{StaticResource Xp.ToolButton}" Click="Refresh_Click"
+                            ToolTip="Fetch the kitchen again (F5)">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Icon.Sync}" Width="16" Height="16" />
+                            <TextBlock Text="Refresh" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="WeekPart" Style="{StaticResource Xp.ToolButton}" GroupName="KitchenPart" Click="Part_Click"
+                                 ToolTip="Tonight's dinner and the week's meal plan">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Icon.ViewCalendar}" Width="16" Height="16" />
+                            <TextBlock Text="This week" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="ListPart" Style="{StaticResource Xp.ToolButton}" GroupName="KitchenPart" Click="Part_Click"
+                                 ToolTip="What to buy, shared with the phones and Claude">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Icon.ViewList}" Width="16" Height="16" />
+                            <TextBlock x:Name="ListPartText" Text="Shopping list" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="PantryPart" Style="{StaticResource Xp.ToolButton}" GroupName="KitchenPart" Click="Part_Click"
+                                 ToolTip="What Claude thinks you have, and your corrections">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Icon.Archive}" Width="16" Height="16" />
+                            <TextBlock x:Name="PantryPartText" Text="On hand" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Shown over what was last loaded when a refresh fails -->
+        <Border x:Name="OfflineBar" DockPanel.Dock="Top" Visibility="Collapsed" Style="{StaticResource Xp.InfoBar}">
+            <DockPanel>
+                <Image Source="{StaticResource Icon.CloudOff}" Width="18" Height="18" Margin="0,0,8,0" />
+                <TextBlock x:Name="OfflineText" VerticalAlignment="Center" TextWrapping="Wrap" />
+            </DockPanel>
+        </Border>
+
+        <Grid>
+            <!-- 1. Tonight and this week -->
+            <DockPanel x:Name="WeekView" Visibility="Collapsed">
+                <Border x:Name="PlanHeader" DockPanel.Dock="Top" Background="{DynamicResource Xp.FaceLight}"
+                        BorderBrush="{DynamicResource Xp.Divider}" BorderThickness="0,0,0,1" Padding="14,7,14,8">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="PlanTitle" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource Xp.HeaderText}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <Border x:Name="PlanDraft" Visibility="Collapsed" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    Background="{DynamicResource Xp.TagFill}" BorderBrush="{DynamicResource Xp.TagBorder}"
+                                    BorderThickness="1" Padding="4,0,5,0">
+                                <TextBlock Text="DRAFT" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Xp.TagText}" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="PlanTagline" Margin="0,2,0,0" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Xp.TextDim}" />
+                    </StackPanel>
+                </Border>
+                <Border x:Name="NoWeekBar" DockPanel.Dock="Top" Visibility="Collapsed" Style="{StaticResource Xp.InfoBar}">
+                    <DockPanel>
+                        <Image Source="{StaticResource Icon.Info}" Width="16" Height="16" Margin="0,0,8,0" />
+                        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="Claude publishes the week's meal plan when it does the Monday grocery order." />
+                    </DockPanel>
+                </Border>
+                <Grid>
+                    <Grid x:Name="WeekPanes">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="290" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border BorderBrush="{DynamicResource Xp.Shadow}" BorderThickness="0,0,1,0">
+                            <ListBox x:Name="DayList" Style="{StaticResource Xp.List}" ItemContainerStyle="{StaticResource Kitchen.Item}"
+                                     SelectionMode="Single" SelectionChanged="DayList_SelectionChanged" />
+                        </Border>
+                        <ScrollViewer x:Name="DayScroll" Grid.Column="1" Focusable="False" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                          <!-- Up to a readable line length, from the left. -->
+                          <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MaxWidth="730" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel x:Name="DayDetails" Margin="22,14,24,22">
+                                <TextBlock x:Name="DayWhen" FontSize="12" Foreground="{DynamicResource Xp.TextDim}" />
+                                <TextBlock x:Name="DayDinner" Margin="0,2,0,0" FontSize="18" FontWeight="Bold" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource Xp.HeaderText}" />
+                                <TextBlock x:Name="DayBase" Margin="0,2,0,0" TextWrapping="Wrap" Foreground="{DynamicResource Xp.TextDim}" />
+                                <Border x:Name="DayNoteBar" Margin="0,10,0,0" Style="{StaticResource Xp.InfoBar}" BorderThickness="1"
+                                        Padding="8,4,8,4" HorizontalAlignment="Left">
+                                    <DockPanel>
+                                        <Image Source="{StaticResource Icon.Info}" Width="16" Height="16" Margin="0,0,7,0" VerticalAlignment="Top" />
+                                        <TextBlock x:Name="DayNoteText" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    </DockPanel>
+                                </Border>
+
+                                <StackPanel x:Name="RecipePanel">
+                                    <TextBlock x:Name="RecipeTitle" Margin="0,14,0,0" FontWeight="Bold" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="RecipeSub" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource Xp.TextDim}" />
+                                    <StackPanel x:Name="IngredientsPart">
+                                        <ContentControl Content="Ingredients" ContentTemplate="{StaticResource Kitchen.Caption}" Focusable="False" />
+                                        <TextBlock x:Name="IngredientsText" TextWrapping="Wrap" LineHeight="19" />
+                                    </StackPanel>
+                                    <StackPanel x:Name="StepsPart">
+                                        <ContentControl Content="Steps" ContentTemplate="{StaticResource Kitchen.Caption}" Focusable="False" />
+                                        <ItemsControl x:Name="StepsList" Focusable="False" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="RecipeNote" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <ContentControl Content="How did it go?" ContentTemplate="{StaticResource Kitchen.Caption}" Focusable="False" />
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="CookedYes" Content="Cooked" Tag="yes" Width="104" Click="Cooked_Click" />
+                                    <RadioButton x:Name="CookedSkipped" Content="Skipped" Tag="skipped" Click="Cooked_Click" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                                    <RadioButton x:Name="RatingLoved" Content="Loved it" Tag="loved" Width="104" Click="Rating_Click" />
+                                    <RadioButton x:Name="RatingOk" Content="It was OK" Tag="ok" Width="104" Click="Rating_Click" />
+                                    <RadioButton x:Name="RatingNo" Content="Not again" Tag="no" Click="Rating_Click" />
+                                </StackPanel>
+                                <TextBlock Text="Note:" Margin="0,13,0,4" />
+                                <TextBox x:Name="DinnerNoteBox" MaxLength="300" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="54"
+                                         VerticalContentAlignment="Top" Width="360" HorizontalAlignment="Left"
+                                         TextChanged="DinnerNoteBox_TextChanged" />
+                                <Button x:Name="SaveNoteButton" Content="Save note" Margin="0,8,0,0" HorizontalAlignment="Left"
+                                        IsEnabled="False" Click="SaveNote_Click" />
+                            </StackPanel>
+                          </Grid>
+                        </ScrollViewer>
+                    </Grid>
+                    <StackPanel x:Name="NoPlanPanel" Visibility="Collapsed" HorizontalAlignment="Center" Margin="24,84,24,24">
+                        <Image Source="{StaticResource Icon.ViewCalendar}" Width="40" Height="40" />
+                        <TextBlock Margin="0,10,0,4" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="520"
+                                   Foreground="{DynamicResource Xp.TextDim}"
+                                   Text="Claude publishes the week's meal plan when it does the Monday grocery order." />
+                    </StackPanel>
+                </Grid>
+            </DockPanel>
+
+            <!-- 2. Shopping list -->
+            <DockPanel x:Name="ShoppingView" Visibility="Collapsed">
+                <Border DockPanel.Dock="Top" Background="{DynamicResource Xp.Face}" BorderBrush="{DynamicResource Xp.Shadow}"
+                        BorderThickness="0,0,0,1" Padding="14,8,14,7">
+                    <StackPanel>
+                        <DockPanel Width="440" HorizontalAlignment="Left">
+                            <Button x:Name="AddButton" DockPanel.Dock="Right" Margin="6,0,0,0" Click="Add_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{StaticResource Icon.New}" Width="16" Height="16" Margin="0,0,5,0" />
+                                    <TextBlock Text="Add" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <TextBox x:Name="AddBox" MaxLength="120" KeyDown="AddBox_KeyDown"
+                                     ToolTip="Something to buy, e.g. Aluminum foil. Enter adds it." />
+                        </DockPanel>
+                        <TextBlock Text="Claude adds everything here to Monday's Walmart order." Margin="0,5,0,0" FontSize="12"
+                                   Foreground="{DynamicResource Xp.TextDim}" />
+                    </StackPanel>
+                </Border>
+                <Grid>
+                    <ScrollViewer Focusable="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MaxWidth="760" />
+                            </Grid.ColumnDefinitions>
+                            <ItemsControl x:Name="ShoppingItems" Focusable="False" Margin="0,0,0,12" />
+                        </Grid>
+                    </ScrollViewer>
+                    <TextBlock x:Name="ListEmpty" Visibility="Collapsed" Margin="18,18,18,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Xp.TextDim}" Text="Nothing on the shopping list." />
+                </Grid>
+            </DockPanel>
+
+            <!-- 3. On hand: Claude's estimate of the pantry, and people's corrections to it -->
+            <DockPanel x:Name="PantryView" Visibility="Collapsed">
+                <Border DockPanel.Dock="Top" Background="{DynamicResource Xp.Face}" BorderBrush="{DynamicResource Xp.Shadow}"
+                        BorderThickness="0,0,0,1" Padding="14,7,14,6">
+                    <StackPanel>
+                        <DockPanel>
+                            <CheckBox x:Name="LowOnlyBox" DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center"
+                                      Content="Running low &amp; out only" Click="LowOnly_Click" />
+                            <TextBlock x:Name="OnHandHeader" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        </DockPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="Tell Claude:" Width="80" VerticalAlignment="Center" FontWeight="Bold" />
+                            <TextBox x:Name="TellBox" Width="400" MaxLength="300" KeyDown="TellBox_KeyDown" TextChanged="TellBox_TextChanged"
+                                     ToolTip="What is different from the list below. Enter sends it." />
+                            <Button x:Name="SendButton" Margin="6,0,0,0" Click="Send_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{StaticResource Icon.Sparkle}" Width="16" Height="16" Margin="0,0,5,0" />
+                                    <TextBlock Text="Send" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <Grid Margin="80,4,0,0" MinHeight="22">
+                            <TextBlock x:Name="TellHint" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Xp.TextDim}"
+                                       Text="For example: Out of eggs, have 2 cans of beans, tossed the cilantro…" />
+                            <StackPanel x:Name="AboutItem" Orientation="Horizontal" Visibility="Collapsed">
+                                <TextBlock x:Name="AboutItemText" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource Xp.TextDim}" />
+                                <Button Style="{StaticResource Xp.DismissButton}" Margin="2,0,0,0" ToolTip="Not about this item"
+                                        Click="AboutItemClear_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                <ScrollViewer x:Name="OnHandScroll" Focusable="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MaxWidth="790" />
+                        </Grid.ColumnDefinitions>
+                        <ItemsControl x:Name="OnHandItems" Focusable="False" Margin="0,0,0,12" />
+                    </Grid>
+                </ScrollViewer>
+            </DockPanel>
+
+            <!-- Not paired, not reachable, or still loading -->
+            <StackPanel x:Name="MessagePanel" Visibility="Collapsed" HorizontalAlignment="Center" Margin="24,84,24,24">
+                <Image x:Name="MessageIcon" Source="{StaticResource Icon.CloudOff}" Width="40" Height="40" />
+                <TextBlock x:Name="MessageText" Margin="0,10,0,4" HorizontalAlignment="Center" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="440" />
+                <TextBlock x:Name="MessageDetail" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                           MaxWidth="440" FontSize="12" Foreground="{DynamicResource Xp.TextDim}" />
+                <Button x:Name="RetryLink" Style="{StaticResource Xp.LinkButton}" Content="Try again" HorizontalAlignment="Center"
+                        Margin="0,8,0,0" Click="Refresh_Click" />
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</UserControl>

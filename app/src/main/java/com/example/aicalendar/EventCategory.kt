@@ -27,8 +27,8 @@ private fun keywordPattern(vararg values: String): Regex =
 // Compiled once: resolvedCategory() runs for every event on every list recomposition.
 private val medicalKeywords = keywordPattern(
     "clinic", "dental", "dentist", "doctor", "health", "hospital", "medical",
-    "medication", "ortho", "pharmacy", "prescription", "therapy", "va clinic",
-    "va video connect", "veterans affairs",
+    "medication", "ortho", "pharmacy", "prescription", "therapy", "urgent care",
+    "telehealth", "physical therapy",
 )
 private val schoolKeywords = keywordPattern(
     "university", "campus", "class", "course", "exam", "homework", "lab kit",

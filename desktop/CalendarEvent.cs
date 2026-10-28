@@ -219,7 +219,7 @@ internal static class CategoryRules
 {
     private static readonly (string Category, Regex Pattern)[] Rules =
     [
-        ("medical", Words("clinic", "dental", "dentist", "doctor", "health", "hospital", "medical", "medication", "ortho", "pharmacy", "prescription", "therapy", "va clinic", "va video connect", "veterans affairs")),
+        ("medical", Words("clinic", "dental", "dentist", "doctor", "health", "hospital", "medical", "medication", "ortho", "pharmacy", "prescription", "therapy", "urgent care", "telehealth", "physical therapy")),
         ("school", Words("university", "campus", "class", "course", "exam", "homework", "lab kit", "lecture", "quiz", "school", "semester", "student center", "syllabus", "eth 110")),
         ("travel", Words("airport", "boarding", "departure", "flight", "hotel", "itinerary", "rental car", "travel", "trip")),
         ("housing", Words("apartment", "housing", "landlord", "lease", "move-out", "move out", "moving", "movers", "packing", "rent", "tenant", "utility")),
