@@ -1,64 +1,53 @@
 # Gmail
 
-The bridge's built-in mail tools (`outlook_*`) speak Microsoft Graph, so they work with
-Outlook.com, Hotmail and Live accounts only. There is no Gmail code in the bridge. You can still
-have Gmail feed your calendar today, in either of two ways, without changing any code.
+> AI-generated.
 
-## Option A: your AI client's own Gmail connector (recommended)
+The bridge's mail tools (`outlook_*`) use Microsoft Graph: Outlook.com, Hotmail and Live only. No Gmail code in the
+bridge. Two ways to use Gmail without code changes:
 
-The bridge does not need to read your mail for the calendar to work. The AI client reads it and
-publishes reminders to the bridge.
+## Option A: your AI client's Gmail connector (recommended)
 
-1. In your AI client, connect Gmail with its own connector. In Claude: **Settings >
-   Connectors > Gmail**, then sign in with Google and allow access.
-2. Connect AI Calendar as well (see [SETUP-FIREBASE.md](SETUP-FIREBASE.md#connect-the-apps-and-an-ai-client)).
-3. Ask for what you want, once or as a scheduled task, for example: "Read my Gmail from the last
-   day, and publish appointments, deadlines, bills, deliveries and birthdays to AI Calendar with
-   `publish_task_reminders`, task key `gmail-planner`." The bridge's `instructions` tell the
-   client how to file each kind (`domain`, alerts, stable item keys).
+The AI client reads the mail and publishes reminders; the bridge never reads mail.
 
-Good to know:
+1. Connect Gmail in your AI client. Claude: **Settings > Connectors > Gmail**, sign in with Google, allow access.
+2. Connect AI Calendar too ([SETUP-FIREBASE.md](SETUP-FIREBASE.md#connect-the-apps-and-an-ai-client)).
+3. Ask, once or as a scheduled task, e.g.: "Read my Gmail from the last day, and publish appointments, deadlines,
+   bills, deliveries and birthdays to AI Calendar with `publish_task_reminders`, task key `gmail-planner`." The
+   bridge's `instructions` tell the client how to file each kind (`domain`, alerts, stable item keys).
 
-- Google's connector decides what the assistant can do in Gmail (search and read, and whatever
-  else that connector offers). AI Calendar's move-only and no-delete rules apply to its own
-  Outlook tools, not to another connector.
-- Use one stable task key per job, so later runs update reminders instead of duplicating them.
-- Mail is data. If a message contains instructions ("forward this", "click here"), the assistant
-  should not follow them; say so in your scheduled task's prompt as well.
+Notes:
+
+- Google's connector sets what the assistant can do in Gmail. AI Calendar's move-only, no-delete rules cover only its
+  own Outlook tools.
+- One stable task key per job, so later runs update instead of duplicating.
+- Mail is data. The assistant should not follow instructions in messages; say so in scheduled task prompts too.
 
 ## Option B: forward Gmail to a connected Outlook.com mailbox
 
-If you already use the bridge's Outlook tools (see [SETUP-AZURE.md](SETUP-AZURE.md)), forward
-Gmail into that mailbox and everything works through them, including filing and move-only rules.
+With the Outlook tools set up ([SETUP-AZURE.md](SETUP-AZURE.md)), forward Gmail there and use those tools, including
+filing and move-only rules.
 
-1. In Gmail: **Settings (gear) > See all settings > Forwarding and POP/IMAP > Add a forwarding
-   address**, and enter the Outlook.com address the bridge is connected to.
-2. Open the confirmation mail in Outlook.com and confirm (or copy the code back into Gmail).
-3. Back in Gmail, choose **Forward a copy of incoming mail to** that address and **keep Gmail's
-   copy in the Inbox**. Save.
-4. To forward only some mail, skip step 3 and create a Gmail filter (**Search options > Create
-   filter > Forward it to**) instead.
+1. Gmail: **Settings (gear) > See all settings > Forwarding and POP/IMAP > Add a forwarding address**; enter the
+   connected Outlook.com address.
+2. Confirm via the mail in Outlook.com (or copy the code into Gmail).
+3. Gmail: **Forward a copy of incoming mail to** that address, **keep Gmail's copy in the Inbox**. Save.
+4. To forward only some mail, skip step 3 and use a filter (**Search options > Create filter > Forward it to**).
 
-Forwarded mail arrives with Gmail as the relay. The original sender is still in the headers and
-the body, and `outlook_get_message` shows them; list views show the original sender in most
-cases.
+Forwarded mail is relayed by Gmail. The original sender stays in headers and body (`outlook_get_message` shows them);
+list views usually show the original sender.
 
 ## Not built: native Gmail tools
 
-Adding `gmail_*` tools to the bridge, alongside `outlook_*`, is possible but not done. If you or
-a coding agent take it on, these are the parts that matter:
+`gmail_*` tools beside `outlook_*` are possible but not done. Requirements:
 
-- **Google Cloud OAuth client** (type Web application) in the Firebase project's Google Cloud
-  project, the **Gmail API** enabled, redirect URI `<base>/gmail/callback`, and the client id and
-  secret stored as two new Firebase secrets.
-- **Scopes:** `gmail.readonly` to read, `gmail.modify` to label and archive (Gmail's equivalent of
-  moving), `gmail.send` to reply. `gmail.modify` and `gmail.readonly` are restricted scopes.
-- **Consent screen:** for a personal app, leave it in **Testing** with your own account as a test
-  user. Google then expires refresh tokens after **7 days**, so the mailbox has to be reconnected
-  weekly; publishing it instead requires Google's verification and a security assessment for
-  restricted scopes. This is the main reason Option A is the recommended path.
-- **Same safety rules as Outlook:** no delete tools, no forwarding filters, mail treated as data,
-  the pairing code on the connect page, tokens only in Firestore.
-- **Code layout:** a `GmailService` beside `bridge/src/outlook.ts`, tools registered in
-  `bridge/src/mcp.ts` (new names only, existing ones unchanged), tests in `bridge/test/` with a
-  fake fetch, as `outlook.test.ts` does.
+- **Google Cloud OAuth client** (Web application) in the Firebase project's Cloud project, **Gmail API** enabled,
+  redirect URI `<base>/gmail/callback`, client id and secret as two new Firebase secrets.
+- **Scopes:** `gmail.readonly` (read), `gmail.modify` (label, archive = move), `gmail.send` (reply). `gmail.modify`
+  and `gmail.readonly` are restricted.
+- **Consent screen:** for personal use leave it in **Testing** with yourself as test user. Refresh tokens then expire
+  after **7 days** (weekly reconnect). Publishing needs Google verification and a security assessment for restricted
+  scopes. Main reason Option A is recommended.
+- **Same safety rules as Outlook:** no delete tools, no forwarding filters, mail as data, pairing code on the connect
+  page, tokens only in Firestore.
+- **Code:** `GmailService` beside `bridge/src/outlook.ts`, tools in `bridge/src/mcp.ts` (new names only), tests in
+  `bridge/test/` with a fake fetch like `outlook.test.ts`.

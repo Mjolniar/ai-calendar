@@ -1,44 +1,42 @@
 # UI harness for the phone app
 
-Runs the phone app's real screens on the JVM, without a phone or emulator, and saves pictures of
-them. It is how the XP look and the UI behavior were checked while the phone was locked or
-unplugged.
+> AI-generated.
+
+Runs the phone app's real screens on the JVM, without phone or emulator, and saves pictures. Used to check the XP look
+and UI behaviour while the phone was unavailable.
 
 It runs on Linux and on Windows (JDK 17+). On Windows see "If the first run on Windows fails".
 
-## What it is
+## Contents
 
-A separate Gradle build. It is not part of the app's build and changes nothing in `app\`.
+Separate Gradle build; not part of the app build; changes nothing in `app\`.
 
-- Sources: the app's own `..\app\src\main\java` and `res`, read in place. No copies.
-- Left out: eight files that need Firebase, WorkManager, the network or the Keystore:
-  `BridgeApi.kt`, `BridgeSyncWorker.kt`, `CalendarMessagingService.kt`, `EventImportParser.kt`,
-  `FirebaseBootstrap.kt`, `PendingChanges.kt`, `RemoteEventParser.kt`, `SecureTokenStore.kt`.
-- In their place: `src\stubs\java\com\example\aicalendar\Stubs.kt`, stand-ins with the same names
-  that keep everything local.
-- Manifest: `src\harness\AndroidManifest.xml`, the app's manifest without the Firebase service and
-  the xml configs.
-- Robolectric 4.17 runs the Compose UI with native graphics; Roborazzi 1.50.0 writes the pictures.
-  Tests render at 443 x 986 dp, 420 dpi, API 35: the size of the reference phone (Pixel 10 Pro XL).
+- Sources: the app's `..\app\src\main\java` and `res`, read in place. No copies.
+- Excluded: eight files needing Firebase, WorkManager, network or Keystore: `BridgeApi.kt`, `BridgeSyncWorker.kt`,
+  `CalendarMessagingService.kt`, `EventImportParser.kt`, `FirebaseBootstrap.kt`, `PendingChanges.kt`,
+  `RemoteEventParser.kt`, `SecureTokenStore.kt`.
+- Replacements: `src\stubs\java\com\example\aicalendar\Stubs.kt`, same-named local stand-ins.
+- Manifest: `src\harness\AndroidManifest.xml` = the app's manifest minus the Firebase service and xml configs.
+- Robolectric 4.17 runs Compose with native graphics; Roborazzi 1.50.0 writes pictures. Render size 443 x 986 dp,
+  420 dpi, API 35: the size of the reference phone (Pixel 10 Pro XL).
 
-The application id is `com.example.aicalendar.uiharness`, not the app's. Nothing from here is meant
-to be installed; if an APK from this build ever reached the phone, it would sit beside the real
-app instead of replacing it with one that cannot sync.
+Application id `com.example.aicalendar.uiharness`, not the app's. Not for installing; an APK from here would sit beside
+the real app instead of replacing it with one that cannot sync.
 
 ## Tests
 
 | File | Covers |
 |---|---|
-| `XpShots.kt` | `XpShots` and `XpShotsDark`: every screen, dialog, menu and state as a picture, in Luna and in Noir. 47 tests each |
-| `XpFlows.kt` | Behavior behind the screens: dark mode toggle, new reminder, title validation, done and undo, archive and undo, delete confirmation, editing time and alerts, find, opening from a notification, picking a day in the month view. 14 tests |
-| `RepeatFlows.kt` | Repeating reminders: the rule in words in details, "this one" and "this and all future ones" for delete and edit and what each sends to the bridge, a new weekly reminder, the cloud connection it needs, and a delivery that cannot repeat. 8 tests |
-| `DeliveryFlows.kt` | The Deliveries tab and its counts; a delivery arms no alarm and posts no notification, on save, on conversion and after a sync; moving it back restores the alert; deliveries and birthdays stay listed through their day. 9 tests |
-| `XpActivityTest.kt` | Starts the real `MainActivity` and opens a reminder from its notification; an end-of-day deadline arms the evening alarm and says "Tonight"; the notification uses the balloon layout; a cold start with Kitchen open fetches it once. 4 tests |
-| `KitchenFlows.kt` | Kitchen against `FakeKitchen.kt` (a stand-in bridge that answers like 0.11.0, or 0.10.0 with `bridge011 = false`, with `before`/`after` hooks to fail a request or lose its answer): what each edit sends and shows, the offline queue (retry after 30 s, at once when the network is back, the background job asked for on the first queued edit, a sent edit kept when the fetch after it fails), corrections (clientId on a resend, a note about a removed item, Withdraw for notes only, We have it taking the pantry's line off), Undo of an ordered line, and that Kitchen never touches reminders or alarms. 36 tests |
-| `UpdateFlows.kt` | Update prompts stay until used; a passing balloon waits behind one; "Allow from this source" continues the install, unless the waiting build is no longer newer or the phone is unpaired. 6 tests |
-| `XpInsetsShot.kt` | The window chrome under fake status and navigation bars. 1 test |
+| `XpShots.kt` | `XpShots` and `XpShotsDark`: every screen, dialog, menu and state as a picture, in Luna and Noir. 47 tests each |
+| `XpFlows.kt` | Dark mode toggle, new reminder, title validation, done/undo, archive/undo, delete confirmation, editing time and alerts, find, opening from a notification, picking a day in month view. 14 tests |
+| `RepeatFlows.kt` | Rule in words in details; "this one" vs "this and all future ones" for delete and edit and what each sends; new weekly reminder; required cloud connection; deliveries cannot repeat. 8 tests |
+| `DeliveryFlows.kt` | Deliveries tab and counts; no alarm or notification on save, conversion, or after sync; moving back restores the alert; deliveries and birthdays listed all day. 9 tests |
+| `XpActivityTest.kt` | Real `MainActivity`; opening a reminder from its notification; end-of-day deadline arms the evening "Tonight" alarm; balloon notification layout; cold start with Kitchen open fetches once. 4 tests |
+| `KitchenFlows.kt` | Kitchen against `FakeKitchen.kt` (fake bridge answering like 0.11.0, or 0.10.0 with `bridge011 = false`; `before`/`after` hooks to fail requests or lose answers): what each edit sends and shows; offline queue (retry after 30 s, at once on reconnect, background job requested on first queued edit, sent edit kept when the follow-up fetch fails); corrections (clientId on resend, note about a removed item, Withdraw for notes only, We have it removing the pantry line); Undo of an ordered line; Kitchen never touches reminders or alarms. 36 tests |
+| `UpdateFlows.kt` | Update prompts persist until used; a passing balloon waits behind one; "Allow from this source" continues the install unless the waiting build is no longer newer or the phone is unpaired. 6 tests |
+| `XpInsetsShot.kt` | Window chrome under fake status and navigation bars. 1 test |
 
-The app's own unit tests stay in `app\src\test` and run with the app's build.
+App unit tests stay in `app\src\test` and run with the app build.
 
 ## Run
 
@@ -46,41 +44,37 @@ The app's own unit tests stay in `app\src\test` and run with the app's build.
 powershell -NoProfile -ExecutionPolicy Bypass -File ui-harness/run.ps1
 ```
 
-It prints the exit code, the notable lines, the test totals and the picture counts. Arguments
-pass through to Gradle, for example `testDebugUnitTest --tests "*DeliveryFlows*"`.
+Prints exit code, notable lines, test totals, picture counts. Extra arguments go to Gradle, e.g.
+`testDebugUnitTest --tests "*DeliveryFlows*"`.
 
-- Pictures: `build\shots\` (light) and `build\shots-dark\`, half scale, named in screen order
-  (`01-life.png`, `06-archived.png`, `26-deliveries.png`, ...). Open them to check a UI change.
-- Test report: `build\reports\tests\testDebugUnitTest\index.html`. Full Gradle output: `run.log`.
-- A clean run took one to three minutes in the cloud. Expect the first run here to take longer.
+- Pictures: `build\shots\` (light), `build\shots-dark\`; half scale, named in screen order (`01-life.png`,
+  `06-archived.png`, `26-deliveries.png`, ...). Check them after UI changes.
+- Report: `build\reports\tests\testDebugUnitTest\index.html`. Full Gradle output: `run.log`.
+- A clean run takes 1-3 minutes; the first run longer.
 
-The first run needs the internet. Gradle downloads Robolectric, Roborazzi and the Compose test
-libraries (Maven Central and Google's Maven), and Robolectric then downloads its Android 15
-runtime jar from Maven Central into `%USERPROFILE%\.m2`. After that it runs offline.
+First run needs internet: Gradle fetches Robolectric, Roborazzi and Compose test libraries (Maven Central, Google
+Maven); Robolectric then fetches its Android 15 runtime jar into `%USERPROFILE%\.m2`. Offline afterwards.
 
 ## When the app changes
 
-- A new or changed screen: add a case to `XpShotsBase` in `XpShots.kt` and look at both pictures.
-- A change to the public functions or classes of one of the eight left-out files: the harness
-  stops compiling until `Stubs.kt` matches again.
-- A new app file that imports Firebase, WorkManager or `java.net`: add it to `stubbedOut` in
-  `build.gradle.kts` and give `Stubs.kt` a stand-in for whatever the UI calls.
-- A library or plugin version bump in the app: repeat it in this folder's `build.gradle.kts`.
-- Pictures are recorded, not compared. A test fails on a crash or a failed assertion, never on a
-  visual difference. Looking at the pictures is the check.
+- New or changed screen: add a case to `XpShotsBase` in `XpShots.kt`; check both pictures.
+- Changed public API of one of the eight excluded files: the harness fails to compile until `Stubs.kt` matches.
+- New app file importing Firebase, WorkManager or `java.net`: add it to `stubbedOut` in `build.gradle.kts` and stub what
+  the UI calls in `Stubs.kt`.
+- Library or plugin version bump in the app: repeat it in this folder's `build.gradle.kts`.
+- Pictures are recorded, not compared. Tests fail on crashes or assertions only. Looking at the pictures is the check.
 
 ## If the first run on Windows fails
 
-Things that already bit this project on this PC, in the order to suspect them:
+Known causes, most likely first:
 
-0. Every test fails with `UnsatisfiedLinkError` at `RenderNode`, after a `NoSuchFileException`
-   naming `%20` in a path: Robolectric could not read its runtime jar from a folder with a space.
-   `run.ps1` copies the jar to `build\robolectric-deps` and `build.gradle.kts`
-   uses it; a run before the jar was ever downloaded fails this way once, then the next run works.
+0. Every test fails with `UnsatisfiedLinkError` at `RenderNode` after a `NoSuchFileException` with `%20` in a path:
+   Robolectric could not read its runtime jar from a folder with a space. `run.ps1` copies the jar to
+   `build\robolectric-deps` and `build.gradle.kts` uses it; a run before the jar was ever downloaded
+   fails once this way, the next works.
    In an agent shell that sets `NoDefaultCurrentDirectoryInExePath`, clear it (`AGENTS.md`).
-1. Temp folder: `run.ps1` sets `TEMP` and `TMP` to `build\tmp`. Robolectric
-   unpacks native libraries there. If it was started some other way, the default temp path (with
-   an apostrophe) is the first suspect.
+1. Temp folder: `run.ps1` sets `TEMP` and `TMP` to `build\tmp` (Robolectric unpacks native libraries
+   there). Started another way, the default temp path (with an apostrophe) is the first suspect.
 2. Path: keep the repository in a folder whose path has no `&` in it.
-3. JDK: Robolectric with API 35 needs JDK 17 or newer. `run.ps1` uses Android Studio's JDK 21.
-4. Offline: a `No cached version` line in `run.log` means a download was blocked.
+3. JDK: Robolectric with API 35 needs JDK 17+. `run.ps1` uses Android Studio's JDK 21.
+4. Offline: `No cached version` in `run.log` means a download was blocked.

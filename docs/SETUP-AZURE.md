@@ -1,50 +1,47 @@
 # Microsoft (Azure) setup for Outlook.com mail
 
-Optional. For Gmail, see [SETUP-GMAIL.md](SETUP-GMAIL.md).
+> AI-generated.
 
-The bridge's `outlook_*` MCP tools let an AI client read and file the mail of one
-**personal Microsoft account** (Outlook.com, Hotmail, Live) through Microsoft Graph. Skip this
-and set `MS_CLIENT_ID` and `MS_CLIENT_SECRET` to placeholders; the tools then report that Outlook
-is not configured and everything else works.
+Optional. Gmail: [SETUP-GMAIL.md](SETUP-GMAIL.md).
 
-The bridge signs in with the authorization code flow against the `consumers` authority
-(`https://login.microsoftonline.com/consumers`), stores the refresh token in Firestore
-(`integrations/outlookAccount`), and refreshes access tokens on demand.
+The `outlook_*` MCP tools let an AI client read and file mail of one **personal Microsoft account** (Outlook.com,
+Hotmail, Live) via Microsoft Graph. To skip, set `MS_CLIENT_ID` and `MS_CLIENT_SECRET` to placeholders; the tools then
+report "not configured" and everything else works.
+
+Sign-in: authorization code flow against `https://login.microsoftonline.com/consumers`. Refresh token stored in
+Firestore (`integrations/outlookAccount`); access tokens refreshed on demand.
 
 ## 1. App registration
 
-1. Sign in to the [Microsoft Entra admin center](https://entra.microsoft.com) (or Azure portal >
-   App registrations) with any account that can register apps. A free personal Azure account
-   works.
-2. **New registration**
-   - Name: anything, for example `AI Calendar Outlook`.
+1. [Microsoft Entra admin center](https://entra.microsoft.com) (or Azure portal > App registrations). A free personal
+   Azure account works.
+2. **New registration:**
+   - Name: any, e.g. `AI Calendar Outlook`.
    - Supported account types: **Personal Microsoft accounts only**.
-   - Redirect URI: platform **Web**,
-     `https://us-central1-<project-id>.cloudfunctions.net/api/outlook/callback`
-     (it is `AI_CALENDAR_PUBLIC_BASE_URL` + `/outlook/callback`).
-3. Note the **Application (client) ID**. That is `MS_CLIENT_ID`.
+   - Redirect URI: platform **Web**, `https://us-central1-<project-id>.cloudfunctions.net/api/outlook/callback`
+     (= `AI_CALENDAR_PUBLIC_BASE_URL` + `/outlook/callback`).
+3. **Application (client) ID** = `MS_CLIENT_ID`.
 
 ## 2. Client secret
 
-Certificates & secrets > New client secret. Pick the longest expiry offered (24 months) and
-put a reminder in your own calendar for it. Copy the secret **value** (not its id) right away. That
-is `MS_CLIENT_SECRET`. When it expires the mail tools stop working until a new one is stored.
+Certificates & secrets > New client secret. Longest expiry (24 months); set yourself a reminder. Copy the secret
+**value** (not its id) immediately = `MS_CLIENT_SECRET`. When it expires, mail tools stop until a new one is stored.
 
 ## 3. API permissions
 
 API permissions > Add a permission > Microsoft Graph > **Delegated**:
 
-| Permission | Why |
+| Permission | Purpose |
 |---|---|
-| `offline_access` | Refresh token, so the bridge keeps access |
-| `openid`, `email`, `User.Read` | Which mailbox is connected |
-| `Mail.ReadWrite` | List, read and move messages, manage folders |
-| `Mail.Send` | Reply or send a clarification mail, and unsubscribe through `mailto:` List-Unsubscribe |
+| `offline_access` | Refresh token |
+| `openid`, `email`, `User.Read` | Identify the mailbox |
+| `Mail.ReadWrite` | List, read, move messages; manage folders |
+| `Mail.Send` | Reply, send clarifications, `mailto:` List-Unsubscribe |
 | `MailboxSettings.ReadWrite` | List and create Inbox rules (move-only) |
 
-No admin consent is needed for a personal account; you consent when you connect.
+No admin consent for personal accounts; you consent when connecting.
 
-## 4. Store the secrets and deploy
+## 4. Store secrets, deploy
 
 ```
 cd bridge
@@ -54,19 +51,17 @@ cd ..
 node bridge/node_modules/firebase-tools/lib/bin/firebase.js deploy --only functions:api
 ```
 
-Delete the two text files afterwards.
+Delete both text files afterwards.
 
 ## 5. Connect the mailbox
 
-Open `https://us-central1-<project-id>.cloudfunctions.net/api/outlook/connect`, enter the
-pairing code, sign in with the Microsoft account and accept the permissions. Then ask your AI
-client to run `outlook_status`; it should report the connected address.
+Open `https://us-central1-<project-id>.cloudfunctions.net/api/outlook/connect`, enter the pairing code, sign in, accept
+the permissions. Ask your AI client to run `outlook_status`; it should report the address.
 
-## Limits worth knowing
+## Limits
 
-- Personal accounts do not support Graph `$search` on messages, nor the `unsubscribeEnabled` and
-  `unsubscribeData` fields. The bridge filters by date and parses `List-Unsubscribe` itself.
-- By design the tools never delete mail: moves only, Deleted Items is refused as a destination,
-  and Inbox rules with delete, forward or redirect actions are rejected.
-- Treat mail content as data. The tool descriptions tell the AI client not to follow
-  instructions found in messages.
+- Personal accounts lack Graph `$search` on messages and the `unsubscribeEnabled` / `unsubscribeData` fields. The
+  bridge filters by date and parses `List-Unsubscribe` itself.
+- Tools never delete mail: moves only, Deleted Items refused as a destination, Inbox rules with delete, forward or
+  redirect rejected.
+- Mail content is data; tool descriptions tell the AI client not to follow instructions in messages.

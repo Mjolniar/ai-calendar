@@ -1,160 +1,110 @@
 # AI Planner Desktop
 
-Windows companion for the Android app. It shows the same cloud
-reminders in the same Windows XP look and pops up reminders while it runs. The
-desktop device token is kept encrypted with the Windows Data Protection API.
+> AI-generated.
+
+Windows companion to the Android app. Same cloud reminders, same Windows XP look, reminder popups while running.
+Device token encrypted with the Windows Data Protection API.
 
 ## Features
 
-- Life, School, Deliveries, All, and Archived tabs. Reminders are grouped by
-  Today, Tomorrow, This week, Next week, and month. Weeks run Monday to Sunday,
-  in these groups and in the month view.
-- Deliveries (packages, orders, shipments) never alert: no balloon pops up for
-  one, whatever lead times it carries. A delivery stays on its tab through the
-  day it is expected, not just until its time, and is filed under Archived when
-  that day ends or it is marked done. The bridge decides what is a delivery
-  (`domain: "delivery"`); the wording of a reminder never does.
-- A reminder moves to Archived when its time passes. A birthday (a title with
-  the word "birthday") stays listed through its whole day and is filed the day
-  after, as a delivery is; its alerts are unchanged.
-- Archived reads as history: the latest first, under Today, Yesterday, Earlier
-  this week, Last week, Earlier this month, and then each month. Reminders
-  finished before their date are kept at the end under Not due yet, soonest
-  first, and join the history when their day comes.
-- List view, or a month view with the reminders of the selected day (View menu
-  or toolbar). Quizzes, tests, and exams are tagged and marked on the month.
-- Find (Ctrl+F) by title, place, notes, or class, across every date in the tab.
-- Click a reminder to open its details: full date, class, points, alerts, the
-  assignment text, and Done, Open in Canvas, and Delete. Done can be undone
-  from the bar that confirms it.
-- Repeating reminders show a repeat icon, and their details say the pattern in
-  words ("Every week on Friday at 8:00 AM"), worded as on the phone. Each
-  occurrence is its own reminder. Delete asks whether it is for this one or for
-  this and all future ones. Repeating reminders are made on the phone or by an
-  AI client, as other reminders are.
-- Class filter on the School tab; each class has the color it has on the phone.
-- Reminder balloons above the notification area, with Open and Mark done. They
-  stay until closed and appear at the same moments as the phone's alerts: an
-  advance notice that would land between 9 PM and 8 AM comes at 8 PM or 8 AM
-  instead, and a deadline at 11:59 PM or midnight gets one "Tonight" alert at
-  8 PM in place of its late last-minute alerts. The rule is
-  `ReminderSchedule.cs`, a copy of the phone's `ReminderSchedule.kt`.
-- Kitchen tab (since 1.4.0): the household's shopping list, what is on hand
-  and the week's meal plan, shared with the phones and with Claude's Monday grocery
-  order. See the Kitchen section below.
-- Tools > Options: dark mode, and keeping the app in the notification area
-  when the window is closed (reminders only pop up while it is running).
-- Sync every 60 seconds, or F5. Offline, the last synced copy is shown.
+- Tabs: Life, School, Deliveries, All, Archived. Groups: Today, Tomorrow, This week, Next week, then months. Weeks run
+  Monday to Sunday (groups and month view).
+- Deliveries never alert, whatever lead times they carry. Listed through their expected day, then archived (or when
+  marked done). The bridge decides what is a delivery (`domain: "delivery"`), never the wording.
+- Reminders move to Archived when their time passes. Birthdays (title contains "birthday") stay listed all day and are
+  archived the day after, like deliveries; alerts unchanged.
+- Archived is history: newest first under Today, Yesterday, Earlier this week, Last week, Earlier this month, then
+  months. Items finished before their date go last under Not due yet, soonest first, and join history on their day.
+- List view or month view with the selected day's reminders (View menu or toolbar). Quizzes, tests, exams tagged and
+  marked on the month.
+- Find (Ctrl+F): title, place, notes, class, all dates in the tab.
+- Click a reminder for details: full date, class, points, alerts, assignment text; Done, Open in Canvas, Delete. Done
+  can be undone from its confirmation bar.
+- Repeating reminders: repeat icon; details give the pattern in words ("Every week on Friday at 8:00 AM"), as on the
+  phone. Each occurrence is its own reminder. Delete asks: this one, or this and all future ones. Created on the phone
+  or by an AI client.
+- School tab class filter; each class has its phone color.
+- Balloons above the notification area with Open and Mark done. They stay until closed and fire with the phone's
+  alerts: advance notices between 9 PM and 8 AM come at 8 PM or 8 AM; an 11:59 PM or midnight deadline gets one
+  "Tonight" alert at 8 PM instead of late alerts. Rule: `ReminderSchedule.cs`, a copy of the phone's
+  `ReminderSchedule.kt`.
+- Kitchen tab (1.4.0+): shopping list, on hand and the week's meal plan, shared with the phones and Claude's Monday
+  grocery order. See Kitchen below.
+- Tools > Options: dark mode; keep running in the notification area when the window closes (reminders pop up only
+  while running).
+- Sync every 60 s, or F5. Offline: last synced copy.
 
 ## Kitchen
 
-The Kitchen tab shows the cloud calendar's kitchen (`GET /v1/kitchen`, bridge
-0.9.0 or later) in three parts, chosen on the bar under the tabs:
+Shows the cloud kitchen (`GET /v1/kitchen`, bridge 0.9.0+) in three parts, chosen on the bar under the tabs:
 
-- This week: tonight's dinner first, then the rest of the week and next week
-  if it is published. Opening a day shows its recipe (ingredients and
-  numbered steps; leftovers nights have none), the day's note, and how it
-  went: Cooked or Skipped, Loved it, It was OK or Not again (choosing the
-  chosen one again clears it), and a note saved with Save note. A note typed
-  and not saved stays with its day (since 1.7.0) when another day is opened.
-  Left open overnight, the tab moves on to the new day by itself: tonight,
-  the week, "Got today" and the 7 days of "Got it".
-- Shopping list: a box with Add, then what is to buy and what is on order
-  (with its order), each with a box to tick when bought and an x to remove it
-  (Undo in the bar that confirms it), then "Got it" with the last 7 days, where
-  unticking puts an item back. Undo puts a line back as it was: to buy, on
-  order with its order, or bought (bridge 0.11.0; bridge 0.10.0 puts it back
-  to buy). Claude adds everything on the list to Monday's Walmart order.
-- On hand (since 1.6.0; "Pantry" before): what Claude thinks is in the house,
-  corrected by people rather than kept by hand. The header says when Claude
-  last checked ("Updated Mon 10/26"). The Tell Claude box sends Claude a note
-  ("Out of eggs, have 2 cans of beans, tossed the cilantro"); it waits under
-  the box as "Waiting for Claude", can be withdrawn (with Undo) until Claude
-  answers, and then shows "Claude: <reply>". The newest three corrections show,
-  with Show all. Below, Claude's estimate by section, each item with a chip in
-  plain words (Have, Running low, Probably out, in green, amber and red) and
-  why Claude thinks so in small grey text; running low and probably out come
-  first in each section, and "Running low & out only" hides the rest. Clicking
-  an item shows We're out (applied at once: it goes on the shopping list and
-  the bar shows Claude's reply), We have it (with bridge 0.11.0 it also takes
-  the line the pantry put on the list off it), and Something else..., which
-  starts a note about that item. Every correction is sent with an id of its
-  own, so one sent twice (a Send again after no answer came) is stored once. There is no Have/Low/Out choice, add form or
-  remove button any more: Claude adds and removes items from people's notes.
-  An empty pantry says "Claude fills this in after the next grocery order."
+- This week: tonight's dinner first, then the rest of the week and next week if published. A day shows its recipe
+  (ingredients, numbered steps; none on leftovers nights), the day's note, and the outcome: Cooked or Skipped, Loved
+  it / It was OK / Not again (re-choosing clears), and a note saved with Save note. Unsaved note text stays with its
+  day (1.7.0+) when another day opens. Left open overnight, the tab moves to the new day: tonight, the week, "Got
+  today" and the 7 days of "Got it".
+- Shopping list: Add box; items to buy and on order (with order), each with a tick box and an x to remove (Undo in the
+  confirmation bar); then "Got it" for the last 7 days, where unticking restores an item. Undo restores a line as it
+  was: to buy, on order with its order, or bought (bridge 0.11.0; 0.10.0 restores as to buy). Claude adds the whole
+  list to Monday's Walmart order.
+- On hand (1.6.0+; "Pantry" before): Claude's estimate of what is in the house, corrected by people, not maintained by
+  hand. Header shows Claude's last check ("Updated Mon 10/26"). The Tell Claude box sends a note ("Out of eggs, have 2
+  cans of beans, tossed the cilantro"); it shows as "Waiting for Claude", can be withdrawn (with Undo) until answered,
+  then shows "Claude: <reply>". Newest three corrections shown, with Show all. Below: the estimate by section, each
+  item with a chip (Have, Running low, Probably out in green, amber, red) and Claude's reason in small grey text; low
+  and out first; "Running low & out only" hides the rest. Clicking an item offers We're out (applied at once: added to
+  the shopping list, reply shown in the bar), We have it (with bridge 0.11.0 also removes the pantry's list line), and
+  Something else... (starts a note about the item). Each correction has its own id, so a resend after no answer is
+  stored once. No Have/Low/Out choice, add form or remove button: Claude adds and removes items from people's notes.
+  Empty pantry: "Claude fills this in after the next grocery order."
 
-All kitchen rules live on the server. Every change is sent at once; the answer
-is shown and the kitchen fetched again. A change the server does not take
-leaves the view as it was and says why in a message box; one about something
-that is gone (removed on another device, or answered by Claude) fetches the
-kitchen again and says so in the status bar instead. A fetch that was already
-out when a change was made never replaces it on screen. There is no push on
-the PC, so the tab is fetched when it is shown, once when the window is
-activated, shown or restored, with Refresh or F5, and while it is on screen
-every 20 seconds when the window is active and every 60 seconds otherwise.
-Nothing is fetched while another tab shows. Without a pairing or a connection it says
-"Can't reach the cloud calendar. Kitchen needs a connection." Nothing about
-the kitchen is stored on the PC except which tab and part were open
-(`view.json`); reminder sync, alerts and the reminder caches are unchanged.
+All kitchen rules are on the server. Every change is sent at once; the answer is shown and the kitchen refetched. A
+rejected change leaves the view unchanged and explains in a message box; a change about something already gone
+(removed elsewhere, or answered by Claude) refetches and says so in the status bar. A fetch started before a change
+never overwrites it. No push on the PC: the tab is fetched when shown, once on window activate/show/restore, with
+Refresh or F5, and while on screen every 20 s (window active) or 60 s (inactive). Nothing fetched while another tab
+shows. Without pairing or connection: "Can't reach the cloud calendar. Kitchen needs a connection." Only the open tab
+and part are stored on the PC (`view.json`); reminder sync, alerts and caches are unaffected.
 
 ## Build and install
 
-Run from PowerShell:
+PowerShell:
 
 ```powershell
 .\install.ps1
 ```
 
-The self-contained executable is installed under
-`%LOCALAPPDATA%\Programs\AI Calendar Desktop` and an `AI Planner` shortcut is
-created on the current user's desktop. An `AI Calendar` shortcut to this app left there by
-an earlier install is removed, and one in the Start Menu is replaced by an
-`AI Planner` shortcut in the same place; shortcuts of that name that start
-something else are left alone. Icon files left in that folder by
-earlier installs are replaced with the app's icon, so a taskbar pin or shortcut
-that points at one shows the current artwork. Private settings and the event cache are
-stored in `%USERPROFILE%\.ai-calendar-desktop`, which prevents Windows package
-redirection from creating separate pairings for different launchers. On first
-launch, enter the public bridge URL and existing pairing code. The
-pairing code is never stored. The address must be https (plain http only to
-this PC itself); a hand-edited `settings.json` with any other address gets no
-request at all, so the device token never travels in the clear. Tools > Cloud Connection shows the connection and
-pairs again.
+Installs the self-contained exe to `%LOCALAPPDATA%\Programs\AI Calendar Desktop` and creates an `AI Planner` desktop
+shortcut. An old `AI Calendar` desktop shortcut to this app is removed; one in the Start Menu is replaced by `AI
+Planner` in the same place; same-named shortcuts to other targets are left alone. Old icon files in the install folder
+are replaced with the current icon, so pins and shortcuts show current artwork. Private settings and the event cache
+are in `%USERPROFILE%\.ai-calendar-desktop` (avoids Windows package redirection creating separate pairings per
+launcher). First launch: enter the public bridge URL and existing pairing code. The pairing code is never stored. The
+address must be https (plain http only to this PC); a hand-edited `settings.json` with any other address gets no
+request at all, so the device token never travels in clear. Tools > Cloud Connection shows the connection and re-pairs.
 
-### The name
+### Name
 
-Since 1.5.1 the app is shown as "AI Planner": the window title, the About
-window, the notification-area icon, balloons, message boxes, shortcuts, and
-the exe's product name and description. On purpose, everything else keeps the
-old name: the exe `AI Calendar.exe` (and so the process name `install.ps1` and
-the build scripts look for), the install folder
-`%LOCALAPPDATA%\Programs\AI Calendar Desktop`, the settings folder
-`%USERPROFILE%\.ai-calendar-desktop`, and the project and assembly names.
-Renaming them would break the taskbar pin, lose the pairing and stop the
-install script from finding the running app.
+Since 1.5.1 the app shows as "AI Planner": window title, About, tray icon, balloons, message boxes, shortcuts, exe
+product name and description. Deliberately unchanged: exe `AI Calendar.exe` (process name used by `install.ps1` and
+build scripts), install folder `%LOCALAPPDATA%\Programs\AI Calendar Desktop`, settings folder
+`%USERPROFILE%\.ai-calendar-desktop`, project and assembly names. Renaming them would break the taskbar pin, lose the
+pairing and stop the install script finding the running app.
 
 ## Code
 
-- `Xp/` is the theme. `Luna.xaml` and `Noir.xaml` are the light and dark
-  palettes; every color the controls use is a resource in them. `XpTheme`
-  installs the theme into the application and swaps one palette for the other. `XpControls.xaml` styles the
-  controls, `XpWindow` draws the title bar and frame, `XpBalloon` and
-  `XpMessageBox` are the popups. All artwork is original; no Microsoft assets
-  are used.
-- `Xp/XpIcons.xaml` is generated by `tools/xp-icons/generate.py` from the same
-  drawings as the phone's icons. Do not edit it by hand.
-- `ReminderText.cs` (grouping, wording, search) and `ReminderSchedule.cs`
-  mirror `PlannerFormat.kt` and `ReminderSchedule.kt` in the phone app.
-- Kitchen: `Kitchen.cs` (records, the tolerant reader of the kitchen answers,
-  and the display rules: tonight from the local date, the list's parts,
-  the On hand order and filter, the corrections shown, `**bold**`),
-  `KitchenRows.cs` (row view models), `KitchenView.xaml(.cs)` (the tab),
-  `MainWindow.Kitchen.cs` (when it is fetched). The calls are in
-  `BridgeClient.cs`; corrections use `POST /v1/kitchen/corrections` and
-  `DELETE /v1/kitchen/corrections/:id` (bridge 0.10.0), and the old pantry
-  routes are no longer called. It works with bridge 0.10.0 and 0.11.0; what
-  0.11.0 adds (`today`, a correction's `clientId`, `removedListItemId`, Undo's
-  `restore`) is optional on both sides.
+- `Xp/` = theme. `Luna.xaml`, `Noir.xaml`: light and dark palettes; every control color is a resource there. `XpTheme`
+  installs the theme and swaps palettes. `XpControls.xaml` styles controls; `XpWindow` draws title bar and frame;
+  `XpBalloon`, `XpMessageBox` are popups. All artwork original; no Microsoft assets.
+- `Xp/XpIcons.xaml` is generated by `tools/xp-icons/generate.py` from the phone icon drawings. Do not edit by hand.
+- `ReminderText.cs` (grouping, wording, search) and `ReminderSchedule.cs` mirror the phone's `PlannerFormat.kt` and
+  `ReminderSchedule.kt`.
+- Kitchen: `Kitchen.cs` (records, tolerant reader of kitchen answers, display rules: tonight from local date, list
+  parts, On hand order and filter, shown corrections, `**bold**`), `KitchenRows.cs` (row view models),
+  `KitchenView.xaml(.cs)` (the tab), `MainWindow.Kitchen.cs` (fetch timing). Calls in `BridgeClient.cs`; corrections
+  use `POST /v1/kitchen/corrections` and `DELETE /v1/kitchen/corrections/:id` (bridge 0.10.0); old pantry routes are
+  no longer called. Works with bridge 0.10.0 and 0.11.0; 0.11.0 additions (`today`, correction `clientId`,
+  `removedListItemId`, Undo `restore`) are optional on both sides.
 
 ## Tests
 
@@ -162,10 +112,7 @@ install script from finding the running app.
 dotnet test tests
 ```
 
-The tests cover the reminder timing and wording and the kitchen's reader and
-rules, drive the main window and its Kitchen tab against a stand-in for the
-calendar service (no network, no tray icon), and draw every window in both
-palettes into
-`tests\artifacts` for a look after a theme change. Windows are shown off screen
-and never take the focus. The run also draws `tests\artifacts\AppIcon.ico` from
-the icon artwork; copy it over `AppIcon.ico` after changing that artwork.
+Covers reminder timing and wording, the kitchen reader and rules; drives the main window and Kitchen tab against a fake
+calendar service (no network, no tray icon); draws every window in both palettes to `tests\artifacts` for review after
+theme changes. Windows are off screen and never take focus. Also draws `tests\artifacts\AppIcon.ico` from the icon
+artwork; copy it over `AppIcon.ico` after changing the artwork.
